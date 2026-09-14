@@ -151,7 +151,7 @@ ap_home() {
 
 | CLI | 포크 명령 | 출력 추출 | 비고 |
 |---|---|---|---|
-| Claude | `cd "$cwd" && claude -p --resume "$session_id" --fork-session --output-format json "<요약 지시>"` | `jq -r '.result'` | `--fork-session` 플래그 존재 확인. 원본 세션 파일 안 건드림. resume은 세션 cwd에서 실행 |
+| Claude | `cd "$cwd" && claude -p --settings '{"disableAllHooks":true}' --resume "$session_id" --fork-session --output-format json "<요약 지시>"` | `jq -r '.result'` | `--fork-session` 플래그 존재 확인. 원본 세션 파일 안 건드림. resume은 세션 cwd에서 실행 |
 | Codex | `cd "$cwd" && codex exec fork "$session_id" "<요약 지시>"` | 미정 — `-o`/`--output-last-message <file>` 후보 | `codex exec fork` 서브커맨드 존재 확인. 출력 파일 옵션·sandbox 플래그는 구현 때 확인(검증 4) |
 | Cursor | `cd "$cwd" && cursor-agent -p --resume "$conversation_id" --output-format json "<요약 지시>"` | `jq -r '.result'` (사전관찰 출력 기준, 구현 때 필드명 재확인) | fork 없음 → **원본 채팅에 append됨** (감수하기로 확정). 아래 실측 참조 |
 
@@ -169,6 +169,8 @@ ap_home() {
 1. **같은 config dir** — 시스템 프롬프트·훅·스킬이 같아야 prefix가 일치한다. `CLAUDE_CONFIG_DIR`를 바꾸지 않는다.
 2. **같은 모델** — 세션 모델 그대로. `--model` 지정 안 함. 저가 모델로 바꾸지 않는다.
 3. **캐시 TTL 내** — 짜증 직후 호출이라 충족.
+
+`--settings '{"disableAllHooks":true}'`는 예외로 붙인다 — 포크는 1회성 헤드리스라 훅이 돌 이유가 없고, 전역 Stop 훅(실측: cache-necromancer `refresh.py`가 50분 잔존)이 살아 있으면 `-p`가 종료하지 못해 결과 JSON이 flush되지 않는다. 훅 비활성화는 시스템 프롬프트를 바꾸지 않는다 — 실측 `input=2 cache_read=300588 cache_create=0`(2026-09-14, 300k 세션).
 
 ### 5.4 요약기 지시(프롬프트) 전문 초안
 

@@ -4,9 +4,11 @@
 # 훅은 /bin/bash(macOS 기본 3.2) 로 실행해 호환성을 같이 확인한다.
 set -uo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CAP="$ROOT_DIR/scripts/ap-capture.sh"
 TMP="$(mktemp -d "$HOME/.ap-test.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
+# 훅은 옆에 ap-fork.sh 가 있으면 실제 claude 포크를 백그라운드로 띄운다 → 사본을 빈 디렉토리에서 실행해 기동을 막는다.
+# 기동 배선 자체는 검증 5 에서 원본 경로 + 가짜 명령(AP_FORK_CMD)으로 1회 확인
+mkdir -p "$TMP/bin"; cp "$ROOT_DIR/scripts/ap-capture.sh" "$TMP/bin/"; CAP="$TMP/bin/ap-capture.sh"
 PASS=0; FAIL=0; OUT=""; RC=0
 
 ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
@@ -117,6 +119,17 @@ assert "4 위 케이스 파일 0" [ "$(nfiles "$TMP/c4")" = 0 ]
 H="$TMP/c4s"; run "$H" '{"prompt":"/ap s","session_id":"","cwd":"'"$ROOT_DIR"'"}'; MD="$(md1 "$H")"
 assert "4 session 없음 → 저장은 함" [ "$(nfiles "$H")" = 1 ]
 assert "4 session 없음 → log 에 no session" grep -qx 'no session' "$H/log/$(basename "$MD" .md).log"
+
+echo "== 검증 5: 포크 기동 배선 (원본 경로 + 가짜 claude)"
+FAKE="$TMP/fake.sh"; printf '#!/bin/bash\nprintf %%s "$FAKE_OUT"\n' > "$FAKE"; chmod 755 "$FAKE"
+FAKE_OUT="$(jq -cn --arg r $'target: model\n### 상황\n### 경위\n### 문제\n### 추정 원인\n### 근거' '{result:$r,usage:{input_tokens:1,cache_read_input_tokens:9}}')"
+H="$TMP/c5"; OUT="$(printf '%s' "$(j '/ap 배선')" | AP_HOME="$H" AP_FORK_CMD="$FAKE" FAKE_OUT="$FAKE_OUT" /bin/bash "$ROOT_DIR/scripts/ap-capture.sh" 2>&1)"; RC=$?
+assert "5 block 즉시 반환" [ "$(printf '%s' "$OUT" | jq -r .decision)" = block ]
+MD="$(md1 "$H")"; LOGF="$H/log/$(basename "$MD" .md).log"
+for i in 1 2 3 4 5 6 7 8 9 10; do grep -qx 'context: done' "$MD" 2>/dev/null && break; sleep 0.5; done
+assert "5 백그라운드 포크가 md 를 done 으로" grep -qx 'context: done' "$MD"
+assert "5 log/<id>.log 에 usage" grep -q '^usage input=1 cache_read=9' "$LOGF"
+assert "5 포크 프로세스 잔존 0" [ -z "$(pgrep -f "ap-fork.sh $H")" ]
 
 echo "== 검증 6: 지연 30회 p95 < 1초"
 RES="$(python3 - "$CAP" "$TMP/c6" "$(j '/ap 표 너무 김')" <<'PY'
