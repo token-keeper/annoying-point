@@ -92,4 +92,4 @@ if [ -f "$SCRIPT_DIR/ap-fork.sh" ]; then
     ( nohup bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
   fi
 fi
-block "📌 ap #$ID 저장 · context 생성 중"
+block "📌 ap 저장됨 #$ID (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부"

@@ -16,7 +16,8 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$ap <한마디>` 한 줄로 
    ┌────────────────────────────────────────────────────────────────────────┤
    │ ① $AP_HOME/inbox/<id>.md 즉시 생성 (frontmatter + 원문, 권한 600)        │
    │ ② scripts/ap-fork.sh <md> 를 새 세션(setsid)으로 완전 분리 기동           │
-   │ ③ block: "📌 ap #<id> 저장 · context 생성 중" → 메인 AI 미전달 (턴 0)   │
+   │ ③ block: "📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음)             │
+   │    · 30초 뒤 상황 요약 자동 첨부" → 메인 AI 미전달 (턴 0)                │
    └────────────────────────────────────────────────────────────────────────┘
                                         ‖ (백그라운드 — 메인 세션과 무관)
    ap-fork.sh ─▶ 그 세션 포크 (claude -p --resume --fork-session / codex exec fork / cursor-agent -p --resume)
@@ -69,9 +70,11 @@ bash install.sh --skills      # + ap-review 스킬 심링크 (Codex·Cursor에�
 
 | CLI | 표시 |
 |---|---|
-| Claude Code | `/annoying-point:ap` → `UserPromptExpansion operation blocked by hook: 📌 ap #<id> 저장 · context 생성 중` · `$ap` → `UserPromptSubmit operation blocked by hook: 📌 …` |
+| Claude Code | `/annoying-point:ap` → `UserPromptExpansion operation blocked by hook: 📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` · `$ap` → `UserPromptSubmit operation blocked by hook: 📌 …` |
 | Codex CLI | `Blocked by hook` |
 | Cursor | 프롬프트만 사라지고 메시지는 표시되지 않는다 (저장·포크는 정상) |
+
+`operation blocked by hook:` 접두는 Claude Code가 붙이는 것이며 오류가 아니다 — 문구에 '정상'이 보이면 저장된 것.
 
 몇 초~수십 초 뒤 (실측 Claude 36초 · Codex 27초 · Cursor 18초) md에 `## context`가 붙고 `context: done`이 된다.
 

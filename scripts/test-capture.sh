@@ -32,6 +32,7 @@ assert "1 exit 0" [ "$RC" = 0 ]
 assert "1 decision=block" [ "$(printf '%s' "$OUT" | jq -r .decision)" = block ]
 assert_has "1 reason 에 저장" "$(reason "$OUT")" "저장"
 assert_has "1 reason 에 #id" "$(reason "$OUT")" "#$(basename "$MD" .md)"
+assert_has "1 reason 에 요약 첨부 안내" "$(reason "$OUT")" "상황 요약 자동 첨부"
 assert "1 inbox md 1개" [ "$(nfiles "$H")" = 1 ]
 assert "1 frontmatter 키 10개 순서" [ "$(sed -n '2,11p' "$MD" | cut -d: -f1 | tr '\n' ' ')" = "ts agent kind repo branch cwd session transcript target context " ]
 assert "1 ---·---·원문 위치" [ "$(sed -n '1p;12p;13p' "$MD" | tr '\n' '|')" = "---|---|표 너무 김|" ]
@@ -98,7 +99,7 @@ jcu() { jq -cn --arg p "$1" --arg c "$ROOT_DIR" '{prompt:$p,conversation_id:"c1"
 runc() { OUT="$(printf '%s' "$2" | AP_HOME="$1" /bin/bash "$CAP" --agent cursor 2>&1)"; RC=$?; }
 H="$TMP/c2l"; runc "$H" "$(jcu '/ap 커서 테스트')"; MD="$(md1 "$H")"
 assert "2c continue=false" [ "$(printf '%s' "$OUT" | jq -r .continue)" = false ]
-assert_has "2c user_message 저장" "$(printf '%s' "$OUT" | jq -r .user_message)" "📌 ap #$(basename "$MD" .md) 저장"
+assert_has "2c user_message 저장" "$(printf '%s' "$OUT" | jq -r .user_message)" "📌 ap 저장됨 #$(basename "$MD" .md) (정상"
 assert "2c decision 키 없음" [ "$(printf '%s' "$OUT" | jq -r 'has("decision")')" = false ]
 assert "2c agent: cursor" grep -qx 'agent: cursor' "$MD"
 assert "2c session = conversation_id" grep -qx 'session: c1' "$MD"

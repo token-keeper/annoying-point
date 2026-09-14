@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "annoying-point",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI 개발 중 짜증·좋은점을 /ap 한 줄로 캡처(훅 가로채기, 메인 세션 토큰 0)하고 /ap-review로 모아 하네스·스킬을 고치는 플러그인 (Claude Code·Codex·Cursor)",
   "author": { "name": "brody424" },
   "license": "MIT",
