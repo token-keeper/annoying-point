@@ -333,17 +333,19 @@ annoying-point/
 - 훅은 `$AP_HOME` 밖에 아무것도 쓰지 않는다. `install.sh`만 `~/.codex/hooks.json`·`~/.cursor/hooks.json`·심링크 2개를 만진다.
 - block reason에는 `<id>`와 사용법만 넣고, 원문은 저장 실패 때만 되돌려 준다.
 
-## 11. 검증 항목 (구현 때 라이브로 확인)
+## 11. 검증 항목 — 라이브 결과 (2026-09-14, Claude Code v2.1.270 · Codex 0.154.0 · Cursor 2026.09.10)
 
-| # | 항목 | 실패 시 |
-|---|---|---|
-| 1 | 플러그인 커맨드로 등록된 `/ap`가 Claude `UserPromptSubmit`에 **원문 그대로** 오는지 (whip 선례상 됨. `UserPromptExpansion` 이벤트와의 순서 확인) | `commands/ap.md` 제거 후 재확인, 또는 가로채기 이벤트를 `UserPromptExpansion`으로 변경 |
-| 2 | Codex·Cursor에서 미등록 `/ap` 입력이 훅까지 도달하는지 (CLI가 "unknown command"로 먼저 막는지) | `$ap` 표기 또는 스킬 등록으로 우회 |
-| 3 | Codex `UserPromptSubmit` block 라이브 동작 | exit 2 + stderr 경로 시도 |
-| 4 | Codex `codex exec fork` 출력 캡처 방법(`-o`/`--output-last-message`)과 sandbox 플래그 | help 기준으로 §5.2 확정 |
-| 5 | Cursor 훅 `conversation_id` == `--resume` id | `~/.cursor/chats/<ws-hash>/` 디렉토리명과 대조해 매핑 규칙 확정 |
-| 6 | Claude `claude -p --resume`이 세션 cwd 밖에서도 세션을 찾는지 (안 되면 `cd "$cwd"` 필수) | `cd "$cwd"` 유지(현재 기본) |
-| 7 | 훅에서 기동된 포크 자식이 세션 모델·config를 실제로 계승하는지 — 출력 JSON의 `model` 필드(있으면)와 usage `cache_read`로 확인. `--model` 생략만으로는 증명되지 않음(자문) | 세션 모델을 훅 입력·transcript에서 읽어 `--model`로 명시 |
+| # | 항목 | 결과 | 확인 방법·근거 |
+|---|---|---|---|
+| 1 | 플러그인 커맨드 `/ap`가 훅에 원문으로 오는지 | **대응 적용 후 통과** — bare `/ap`는 "Unknown command"로 훅 미도달. 네임스페이스 `/annoying-point:ap`는 `UserPromptExpansion`으로 가로채야 함(`UserPromptSubmit`은 못 잡음). 플레인 `$ap`는 `UserPromptSubmit`에서 잡힘 | `claude --plugin-dir` 세션: `/ap 테스트` → Unknown · `/annoying-point:ap 표 너무 김` → `UserPromptExpansion operation blocked by hook` + md 생성 + 트랜스크립트 user 0·assistant 0 · `$ap …` → `UserPromptSubmit operation blocked by hook`. 대응: hooks.json에 두 이벤트 등록, `command_name` 라우팅(커밋 1) |
+| 2 | Codex·Cursor 미등록 `/ap` 도달 여부 | **불가 → `$ap` 사용** — Codex "Unrecognized command '/ap'", Cursor도 슬래시 미등록 | Codex `CODEX_HOME` 복사본 세션 · Cursor 프로젝트 `.cursor/hooks.json` 세션에서 `$ap …` 캡처 확인 |
+| 3 | Codex `UserPromptSubmit` block | **통과** — `Blocked by hook / 📌 ap #… 저장` 표시, AI 턴 없음 | 위 Codex 세션 |
+| 4 | `codex exec fork` 출력 캡처·sandbox | **확정** — `-o/--output-last-message <FILE>`(마지막 메시지 텍스트), `--ephemeral`(rollout 미생성 확인), `-c sandbox_mode="read-only"`(fork에 `-s` 없음) | `codex exec fork --help` · 실세션 포크 27초 done |
+| 5 | Cursor `conversation_id` == `--resume` id | **통과** — 훅 `conversation_id`로 `cursor-agent -p --resume` 성공, 18초 done, cache_read 18,592/input 686 | 프로젝트 hooks.json 세션 `$ap` → 포크 완료. 단 훅 종료 시 Cursor가 프로세스 그룹을 kill → perl `POSIX::setsid()` 분리 필요(§5.1) |
+| 6 | `claude -p --resume`이 세션 cwd 밖에서 되는지 | **통과** — `$HOME`에서 실행해도 세션 찾음(`파인애플` 회상). `cd "$cwd"`는 필수 아님, 유지 | `cd ~ && claude -p --resume <id> --fork-session --output-format json …` |
+| 7 | 포크 자식의 세션 모델·config 계승 | **통과** — 포크 jsonl 모델 `claude-opus-5`(세션과 동일), `input=2 cache_read=300588 cache_creation=0`(prefix 완전 적중). `--settings '{"disableAllHooks":true}'`는 캐시를 깨지 않음 | `scripts/test-fork.sh` 실세션 검증 1·4 + 플러그인 세션 라이브(32초, cache_read 10,191/input 2) |
+
+추가 실측: SessionStart 알림 — Claude 첫 화면 `SessionStart:startup says: 📌 …` 표시 / Codex 첫 프롬프트 아래 `↳ Hook · 📌 …`(시작 화면엔 없음, 모델엔 미전달) / Cursor `additional_context`만(화면 미표시). `/ap-review` — Claude `/annoying-point:ap-review` 전 절차 통과(4건→3그룹→하나씩 1/2/3→반영·스킵·보류, 커밋 0회) / Codex `$ap-review` 스킬 로딩·절차 수행 / Cursor 프로젝트 `.cursor/skills` 심링크로 `Used ap-review`(슬래시 목록엔 없음, 자연어 요청).
 
 ## 12. 자문 반영 기록 (2026-09-14 Astra 1회차)
 
