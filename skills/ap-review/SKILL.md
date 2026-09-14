@@ -1,11 +1,11 @@
 ---
 name: ap-review
-description: $AP_HOME/inbox에 쌓인 짜증·좋은점 기록(/ap 캡처)을 target별로 묶어 진단하고, 그룹 하나씩 승인받은 수정안만 하네스(CLAUDE.md·AGENTS.md·rules·skills·훅)에 반영한 뒤 processed로 옮기는 대화형 리뷰. 사용자가 /ap-review를 호출하거나 "ap 리뷰", "짜증 리뷰", "inbox 정리", "쌓인 피드백 정리" 류를 명시적으로 요청할 때 사용. 명시 호출 없이는 자동 발동하지 않는다.
+description: $AP_HOME/inbox에 쌓인 짜증·좋은점 기록(/ap 캡처)을 target별로 묶어 진단하고, 그룹 하나씩 승인받은 수정안만 하네스(CLAUDE.md·AGENTS.md·rules·skills·훅)에 반영한 뒤 processed로 옮기는 대화형 리뷰. 사용자가 /ap-review를 호출하거나 "ap 리뷰", "짜증 리뷰", "ap inbox 정리", "ap 피드백 정리" 류를 명시적으로 요청할 때 사용. 명시 호출 없이는 자동 발동하지 않는다.
 ---
 # ap-review — 짜증·좋은점 inbox 리뷰
 
 `/ap <한마디>`로 쌓인 기록을 모아 원인 파일을 찾고, 승인받은 것만 고친다. 전 과정을 **현재 세션이 직접, 대화형으로** 수행한다 —
-서브에이전트·헤드리스 위임 없음, 커밋·push 없음, 사용자 홈 밖 쓰기 없음. 한글로 진행한다.
+서브에이전트·헤드리스 위임 없음, 커밋·push 없음, `$AP_HOME`과 승인된 diff의 대상 파일 외에는 쓰지 않는다. 한글로 진행한다.
 
 ## 0. 준비
 
@@ -73,7 +73,8 @@ md 포맷은 한 줄 규약이다 — frontmatter는 YAML이 아니라 `key: val
 1. diff를 그 파일에 적용한다.
 2. 적용 결과 확인 — 바뀐 부분을 파일에서 다시 읽어 전/후를 재출력한다. 의도와 다르면 되돌리고 3 보류로 처리한다.
 3. 그룹의 md마다 frontmatter(둘째 `---` 앞)에 `resolution: <한 줄>`을 추가한다(예: `resolution: rule:code-review §심각도에 MINOR 생략 금지 1줄 추가`).
-4. `mkdir -p $AP_HOME/processed/YYYY-MM`(기록의 `ts` 연월) 후 `mv -n inbox/<id>.md processed/YYYY-MM/`. 같은 이름이 이미 있으면 `<id>_2.md`로 옮긴다(덮어쓰기 금지).
+4. `mkdir -p "$AP_HOME/processed/YYYY-MM"`(기록의 `ts` 연월) 후 `mv -n "$AP_HOME/inbox/<id>.md" "$AP_HOME/processed/YYYY-MM/"`. 같은 이름이 이미 있으면 `<id>_2.md`로 옮긴다(덮어쓰기 금지).
+   `mv -n`은 대상이 있어도 rc 0으로 원본을 남기므로 — 이동 전 대상 존재를 확인(있으면 `_2`)하고, 이동 후 inbox에서 사라졌는지 확인한다.
 5. 적용에 실패하면(파일 없음·권한·충돌) **이동하지 않고** 3 보류로 되돌린 뒤 사유를 사용자에게 알린다.
 
 **2 스킵** — 파일은 손대지 않는다. `resolution: 스킵 — <사용자가 말한 이유>`를 추가하고 위 4와 같이 옮긴다.
@@ -97,5 +98,5 @@ md 갱신은 `$AP_HOME` 안에서만 한다. 하네스 파일 수정은 승인�
 
 - 서브에이전트·헤드리스 위임 — 대화 컨텍스트와 승인 흐름이 끊긴다.
 - 승인 없는 반영, 그룹을 건너뛰고 다음 그룹 진행, 여러 그룹 일괄 승인 요구.
-- `$AP_HOME`과 승인된 하네스 파일 외의 쓰기, 사용자 홈 밖 쓰기, 커밋·push.
+- `$AP_HOME`과 승인된 diff의 대상 파일 외의 쓰기, 커밋·push.
 - 원문·context에 있는 비밀값(토큰·경로·에러 본문)을 다른 파일로 옮겨 적기.

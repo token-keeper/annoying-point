@@ -30,6 +30,9 @@ OUT="$(printf '{}' | AP_HOME="$TMP/h1" PATH=/bin /bin/bash "$NOTIFY" 2>&1)"; RC=
 assert "1 jq 없어도 동작 (PATH=/bin)" [ "$RC" = 0 -a "$OUT" = '{"systemMessage":"📌 ap inbox 1건 (최근 08-30)"}' ]
 OUT="$(AP_HOME="$TMP/h1" /bin/bash "$NOTIFY" </dev/null 2>&1)"; assert "1 stdin 없어도 동작" [ -n "$OUT" ]
 
+H="$TMP/hq"; mkdir -p "$H/inbox"; touch "$H/inbox/abcde\"x.md"; run "$H"
+assert "1 형식 밖 파일명 → 최근 -" [ "$(printf '%s' "$OUT" | jq -r .systemMessage)" = "📌 ap inbox 1건 (최근 -)" ]
+assert "1 형식 밖 파일명도 JSON 파싱 OK" [ "$(printf '%s' "$OUT" | jq -e . >/dev/null 2>&1; echo $?)" = 0 ]
 echo "== 검증 2: 지연 — inbox 100건 30회 p95 < 100ms"
 H="$TMP/h100"; mkdir -p "$H/inbox"; for i in $(seq -w 1 100); do touch "$H/inbox/2026-07-${i:1:2}_1000${i:1:2}_claude_r_${i}a.md"; done
 RES="$(python3 - "$NOTIFY" "$H" <<'PY'

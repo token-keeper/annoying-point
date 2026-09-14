@@ -137,9 +137,28 @@ OUT="$(printf '%s' "$(j '/ap x')" | AP_HOME="$TMP/c4" PATH=/bin /bin/bash "$CAP"
 assert "4 jq 없음 → 출력 없음" [ -z "$OUT" ]; assert "4 jq 없음 → exit 0" [ "$RC" = 0 ]
 run "$TMP/c4" 'not json'; assert "4 JSON 아님 → 출력 없음" [ -z "$OUT" ]; assert "4 JSON 아님 → exit 0" [ "$RC" = 0 ]
 assert "4 위 케이스 파일 0" [ "$(nfiles "$TMP/c4")" = 0 ]
-H="$TMP/c4s"; run "$H" '{"prompt":"/ap s","session_id":"","cwd":"'"$ROOT_DIR"'"}'; MD="$(md1 "$H")"
+# 가짜 ap-fork.sh (사본 옆) — 호출된 md 경로를 <AP_HOME>/launched 에 기록
+mkfake_fork() { printf '#!/bin/bash\necho "$1" > "$(dirname "$1")/../launched"\n' > "$TMP/bin/ap-fork.sh"; }
+mkfake_fork; H="$TMP/c4s"; run "$H" '{"prompt":"/ap s","session_id":"","cwd":"'"$ROOT_DIR"'"}'; MD="$(md1 "$H")"
+for i in 1 2 3 4 5 6; do [ -s "$H/launched" ] && break; sleep 0.5; done
 assert "4 session 없음 → 저장은 함" [ "$(nfiles "$H")" = 1 ]
-assert "4 session 없음 → log 에 no session" grep -qx 'no session' "$H/log/$(basename "$MD" .md).log"
+assert "4 session 없음 → 런처는 기동됨 (no session 판정은 런처 몫)" [ "$(cat "$H/launched" 2>/dev/null)" = "$MD" ]
+assert "4 session 없음 → 훅은 log 에 no session 안 씀" [ ! -s "$H/log/$(basename "$MD" .md).log" ]
+rm -f "$TMP/bin/ap-fork.sh"
+
+echo "== 검증 4b: 메타 개행·홈 경계(.. / 심링크)"
+H="$TMP/c4b"; run "$H" "$(jq -cn --arg c "$ROOT_DIR" '{prompt:"/ap 메타",session_id:"s\n1",transcript_path:"/t\r\n2",cwd:$c}')"; MD="$(md1 "$H")"
+assert "4b 메타 개행 → 13행 유지" [ "$(wc -l < "$MD" | tr -d ' ')" = 13 ]
+assert "4b session 개행 → 공백" grep -qx 'session: s 1' "$MD"
+assert "4b transcript CRLF → 공백" grep -qx 'transcript: /t  2' "$MD"
+run "$HOME/x/../../tmp" "$(j '/ap 점점')"; assert_has "4b \$HOME/x/../../tmp → 저장 실패" "$(reason "$OUT")" "저장 실패"
+assert "4b .. 경로 파일 0" [ ! -e "$HOME/x" -a ! -e /tmp/inbox ]
+OUTSIDE="$(mktemp -d)"; ln -s "$OUTSIDE" "$TMP/link-out"; run "$TMP/link-out" "$(j '/ap 심링크')"
+assert_has "4b 홈 안 심링크 → 홈 밖 → 저장 실패" "$(reason "$OUT")" "저장 실패"
+assert "4b 심링크 너머 inbox 파일 0" [ "$(ls "$OUTSIDE/inbox" 2>/dev/null | wc -l | tr -d ' ')" = 0 ]
+rm -rf "$OUTSIDE"
+mkdir -p "$TMP/real-in"; ln -s "$TMP/real-in" "$TMP/link-in"; run "$TMP/link-in" "$(j '/ap 홈안링크')"
+assert "4b 홈 안을 가리키는 심링크는 정상 저장" [ "$(nfiles "$TMP/real-in")" = 1 ]
 
 echo "== 검증 5: 포크 기동 배선 (원본 경로 + 가짜 claude)"
 FAKE="$TMP/fake.sh"; printf '#!/bin/bash\nprintf %%s "$FAKE_OUT"\n' > "$FAKE"; chmod 755 "$FAKE"

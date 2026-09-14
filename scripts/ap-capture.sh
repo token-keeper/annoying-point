@@ -61,24 +61,28 @@ CWD="$(printf '%s' "$INPUT" | jq -r '.workspace_roots[0]? // .cwd // empty')"; C
 REPO="$(basename "$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)"
 REPO="${REPO:-$(basename "$CWD")}"
 BRANCH="$(git -C "$CWD" branch --show-current 2>/dev/null)"; BRANCH="${BRANCH:--}"
+# 메타값의 CR/LF 도 공백으로 — frontmatter 한 줄 규약(줄바꿈 금지) 보호
+SESSION="${SESSION//[$'\r\n']/ }"; TRANSCRIPT="${TRANSCRIPT//[$'\r\n']/ }"; CWD="${CWD//[$'\r\n']/ }"
+REPO="${REPO//[$'\r\n']/ }"; BRANCH="${BRANCH//[$'\r\n']/ }"
 
 # 저장 (§4) — $HOME 아래만 허용, 디렉토리 700·파일 600 은 umask, noclobber 로 덮어쓰기 방지
 DIR="$(ap_home)"
 FAIL="📌 ap 저장 실패 ($DIR 쓰기 불가) — 원문: $PROMPT"
 case "$DIR" in "$HOME"/*) ;; *) block "$FAIL" ;; esac
+case "$DIR" in */../*|*/..) block "$FAIL" ;; esac  # 문자열로 홈 안처럼 보여도 .. 로 빠져나가는 경로 거부
 mkdir -p "$DIR/inbox" "$DIR/processed" "$DIR/log" 2>/dev/null || block "$FAIL"
+# 심링크로 홈 밖을 가리키는 경우 — 실경로로 재검사
+case "$(cd "$DIR" 2>/dev/null && pwd -P)" in "$(cd "$HOME" && pwd -P)"/*) ;; *) block "$FAIL" ;; esac
 ID="$(date +%Y-%m-%d_%H%M%S)_${AGENT}_${REPO}_$(head -c2 /dev/urandom | xxd -p)"
 MD="$DIR/inbox/$ID.md"
 ( set -C; printf '%s\n' "---" "ts: $(date '+%Y-%m-%d %H:%M')" "agent: $AGENT" "kind: $KIND" \
   "repo: $REPO" "branch: $BRANCH" "cwd: $CWD" "session: $SESSION" "transcript: $TRANSCRIPT" \
   "target:" "context: pending" "---" "$TEXT" > "$MD" ) 2>/dev/null || block "$FAIL"
 
-# 포크 기동 (§5.1) — 런처 stdout·stderr 는 log/<id>.log 로. session 없으면 기동 생략
+# 포크 기동 (§5.1) — 런처 stdout·stderr 는 log/<id>.log 로. session 이 비어도 기동한다(런처가 no session → failed 처리)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG="$DIR/log/$ID.log"
-if [ -z "$SESSION" ]; then
-  echo "no session" >> "$LOG"
-elif [ -f "$SCRIPT_DIR/ap-fork.sh" ]; then
+if [ -f "$SCRIPT_DIR/ap-fork.sh" ]; then
   # 새 세션(setsid)으로 뗀다 — Cursor 는 훅 종료 시 프로세스 그룹을 통째로 kill 해 nohup 자식도 죽는다(실측: setsid 로 뗀 것만 생존).
   # macOS 에 setsid 명령이 없어 기본 perl(5.34) POSIX::setsid 로 대체. perl 없으면 nohup 폴백(Claude·Codex 는 그걸로도 살아남는다)
   if command -v perl >/dev/null 2>&1; then

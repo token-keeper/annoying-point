@@ -25,6 +25,8 @@ FAKE="$TMP/fake.sh"
 cat > "$FAKE" <<'EOF'
 #!/bin/bash
 [ -n "${FAKE_EXEC_SLEEP:-}" ] && exec sleep "$FAKE_EXEC_SLEEP"
+[ -n "${FAKE_TRAP_SLEEP:-}" ] && { trap '' TERM; sleep "$FAKE_TRAP_SLEEP"; exit 0; }
+[ -n "${FAKE_OUT_FILE:-}" ] && { cat "$FAKE_OUT_FILE"; exit 0; }
 [ -n "${FAKE_SLEEP:-}" ] && sleep "$FAKE_SLEEP"
 if [ -n "${FAKE_FIRST_OUT+x}" ] && [ ! -e "$FAKE_MARK" ]; then touch "$FAKE_MARK"; printf '%s' "$FAKE_FIRST_OUT"; exit 0; fi
 while [ $# -gt 0 ]; do [ "$1" = -o ] && printf '%s' "${FAKE_OUT:-}" > "$2"; shift; done
@@ -109,6 +111,20 @@ H="$TMP/x5"; MD="$(mkmd "$H" s1 "$ROOT_DIR" cursor)"; runf "$H" "$MD" FAKE_OUT='
 assert "3b cursor is_error → failed" [ "$(ctx "$MD")" = failed ]
 H="$TMP/x6"; MD="$(mkmd "$H" s1 "$ROOT_DIR" gemini)"; runf "$H" "$MD" FAKE_OUT="$GOOD_JSON"
 assert "3b 알 수 없는 agent → failed" [ "$(ctx "$MD")" = failed ]; assert_has "3b log agent 알 수 없음" "$(cat "$LOG")" "agent 알 수 없음: gemini"
+
+echo "== 검증 3d: 원본 보호·강제 종료·대용량"
+H="$TMP/y1"; MD="$(mkmd "$H" s1 "$ROOT_DIR")"; B0="$(wc -c < "$MD" | tr -d ' ')"; touch "$H/log/$(basename "$MD" .md).log"; chmod 555 "$H/log"
+runf "$H" "$MD" FAKE_OUT="$GOOD_JSON"; chmod 755 "$H/log"
+assert "3d mktemp 불가 → exit≠0" [ "$RC" != 0 ]; assert "3d mktemp 불가 → 원본 바이트 동일" [ "$(wc -c < "$MD" | tr -d ' ')" = "$B0" ]
+assert "3d mktemp 불가 → context 그대로 pending" [ "$(ctx "$MD")" = pending ]; assert_has "3d log mktemp 실패" "$(cat "$LOG")" "mktemp 실패"
+H="$TMP/y2"; MD="$(mkmd "$H" s1 "$ROOT_DIR")"; S=$(date +%s); runf "$H" "$MD" FAKE_TRAP_SLEEP=999 AP_FORK_TIMEOUT=2; E=$(( $(date +%s) - S ))
+assert "3d TERM 무시 자식 → 8초 내 failed (${E}s)" [ "$E" -le 8 -a "$(ctx "$MD")" = failed ]
+assert_has "3d log timeout" "$(cat "$LOG")" "timeout 2s"; assert "3d 자식 sleep 999 잔존 0" [ -z "$(pgrep -f 'sleep 999')" ]
+H="$TMP/y3"; MD="$(mkmd "$H" s1 "$ROOT_DIR")"; { printf 'target: model\n### 상황\n'; head -c 1048576 /dev/zero | tr '\0' 'x'; printf '\n### 경위\n### 문제\n### 추정 원인\n### 근거\n'; } > "$H/big.txt"
+jq -Rs '{result: .}' "$H/big.txt" > "$H/big.json"; runf "$H" "$MD" FAKE_OUT_FILE="$H/big.json"
+assert "3d 1MB 본문 + 헤더 5 → done" [ "$(ctx "$MD")" = done ]; assert "3d 1MB md 크기" [ "$(wc -c < "$MD" | tr -d ' ')" -gt 1048576 ]
+H="$TMP/y4"; MD="$(mkmd "$H" s1 "$ROOT_DIR")"; runf "$H" "$MD" FAKE_EXEC_SLEEP=999 AP_FORK_TIMEOUT=2
+assert "3d 기한 초과는 exit 143 이 아니라 timeout 으로 기록" [ "$(grep -c '^exit 143' "$LOG")" = 0 -a "$(grep -c '^timeout 2s' "$LOG")" = 1 ]
 
 echo "== 검증 3c: Cursor 빈 결과 1회 재시도"
 CUR_GOOD="$(jq -cn --arg r "$GOOD" '{is_error:false,result:$r,usage:{inputTokens:5,cacheReadTokens:9}}')"

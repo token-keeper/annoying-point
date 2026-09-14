@@ -11,10 +11,10 @@ ok()  { PASS=$((PASS+1)); echo "PASS $1"; }
 bad() { FAIL=$((FAIL+1)); echo "FAIL $1"; }
 assert()     { local n="$1"; shift; if "$@"; then ok "$n"; else bad "$n"; fi; }
 assert_has() { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1 (실제: $2)" ;; esac; }
-CX_CMD="bash \"$ROOT_DIR/scripts/ap-capture.sh\" --agent codex"
-CU_CMD="bash \"$ROOT_DIR/scripts/ap-capture.sh\" --agent cursor"
-NX_CMD="bash \"$ROOT_DIR/scripts/ap-notify.sh\" --agent codex"
-NU_CMD="bash \"$ROOT_DIR/scripts/ap-notify.sh\" --agent cursor"
+CX_CMD="bash '$ROOT_DIR/scripts/ap-capture.sh' --agent codex"
+CU_CMD="bash '$ROOT_DIR/scripts/ap-capture.sh' --agent cursor"
+NX_CMD="bash '$ROOT_DIR/scripts/ap-notify.sh' --agent codex"
+NU_CMD="bash '$ROOT_DIR/scripts/ap-notify.sh' --agent cursor"
 
 echo "== 1a: 새 HOME 에 설치"
 H="$TMP/h1"; mkdir -p "$H"; OUT="$(HOME="$H" /bin/bash "$INST" 2>&1)"; RC=$?
@@ -71,6 +71,33 @@ assert "1e rc ≠ 0" [ "$RC" != 0 ]; assert_has "1e 병합 실패 메시지" "$O
 assert "1e 원본 그대로" [ "$(cat "$H/.codex/hooks.json")" = "not json" ]
 assert "1e cursor 쪽은 진행" [ -f "$H/.cursor/hooks.json" ]
 
+echo "== 1e2: 구조가 다른 hooks.json·0바이트·구 형식(따옴표) 항목"
+H="$TMP/h4b"; mkdir -p "$H/.codex"; printf '%s' '{"hooks":{"UserPromptSubmit":{}}}' > "$H/.codex/hooks.json"
+OUT="$(HOME="$H" /bin/bash "$INST" 2>&1)"; RC=$?
+assert "1e2 UserPromptSubmit:{} → 병합 실패" [ "$RC" != 0 ]; assert_has "1e2 병합 실패 메시지" "$OUT" "병합 실패($H/.codex/hooks.json)"
+assert "1e2 원본 무변경" [ "$(cat "$H/.codex/hooks.json")" = '{"hooks":{"UserPromptSubmit":{}}}' ]
+assert "1e2 임시 파일 잔존 0" [ -z "$(ls "$H/.codex/" | grep tmp)" ]
+H="$TMP/h4c"; mkdir -p "$H/.codex" "$H/.cursor"; : > "$H/.codex/hooks.json"; : > "$H/.cursor/hooks.json"
+OUT="$(HOME="$H" /bin/bash "$INST" 2>&1)"; RC=$?
+assert "1e2 0바이트 → 정상 병합" [ "$RC" = 0 -a "$(jq '.hooks.UserPromptSubmit|length' "$H/.codex/hooks.json")" = 1 -a "$(jq -r .version "$H/.cursor/hooks.json")" = 1 ]
+H="$TMP/h4d"; mkdir -p "$H/.codex"
+printf '%s' "$(jq -cn --arg c "bash \"$ROOT_DIR/scripts/ap-capture.sh\" --agent codex" '{hooks:{UserPromptSubmit:[{hooks:[{type:"command",command:$c,timeout:5}]}]}}')" > "$H/.codex/hooks.json"
+OUT="$(HOME="$H" /bin/bash "$INST" 2>&1)"
+assert "1e2 구 형식(큰따옴표) 항목 → 이미 있음, 중복 0" [ "$(jq '.hooks.UserPromptSubmit|length' "$H/.codex/hooks.json")" = 1 ]
+
+echo "== 1e3: 특수문자 경로 — 단일 인용 이스케이프"
+R="$TMP/it's \$(id) dir"; mkdir -p "$R/scripts"; cp "$INST" "$R/"; printf '#!/bin/bash\necho "OK $2"\n' > "$R/scripts/ap-capture.sh"; touch "$R/scripts/ap-notify.sh"
+H="$TMP/hq"; mkdir -p "$H"; OUT="$(HOME="$H" /bin/bash "$R/install.sh" 2>&1)"; RC=$?
+CMD="$(jq -r '.hooks.UserPromptSubmit[0].hooks[0].command' "$H/.codex/hooks.json")"
+assert "1e3 rc 0" [ "$RC" = 0 ]
+assert "1e3 command 에 '\\'' 이스케이프" [ "$CMD" = "bash '$TMP/it'\\''s \$(id) dir/scripts/ap-capture.sh' --agent codex" ]
+assert "1e3 bash -n 파싱 OK" [ "$(bash -n -c "$CMD" 2>&1; echo $?)" = 0 ]
+assert "1e3 실행하면 그 스크립트가 불린다 (\$(id) 미확장)" [ "$(bash -c "$CMD" 2>&1)" = "OK codex" ]
+
+echo "== 1e4: 홈 밖 AP_HOME → mkdir 없음"
+H="$TMP/h4e"; mkdir -p "$H"; O="/tmp/ap-nomk-$$"; OUT="$(AP_HOME="$O" HOME="$H" /bin/bash "$INST" 2>&1)"
+assert_has "1e4 경고" "$OUT" "홈 밖"; assert "1e4 디렉토리 미생성" [ ! -e "$O" ]
+
 echo "== 1f: jq 없음"
 H="$TMP/h5"; mkdir -p "$H"; OUT="$(HOME="$H" PATH=/bin /bin/bash "$INST" 2>&1)"; RC=$?
 assert "1f exit 1" [ "$RC" = 1 ]; assert_has "1f 안내" "$OUT" "brew install jq"
@@ -84,7 +111,12 @@ assert "1g cursor 심링크" [ "$(readlink "$H/.cursor/skills/ap-review")" = "$R
 assert_has "1g 심링크 디렉토리 주의 출력" "$OUT" "주의: $H/.agents/skills 는 심링크 → $H/.real-skills"
 OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
 assert "1g 재실행 후에도 링크 1개" [ "$(ls "$H/.real-skills" | wc -l | tr -d ' ')" = 1 ]
+H="$TMP/h6b"; mkdir -p "$H/.agents/skills/ap-review"; OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
+assert_has "1g 실제 디렉토리 존재 → 스킵" "$OUT" "실제 디렉토리 존재 — 스킵: $H/.agents/skills/ap-review"
+assert "1g 실제 디렉토리 안에 링크 안 만듦" [ ! -e "$H/.agents/skills/ap-review/ap-review" ]
+assert "1g cursor 쪽은 정상 링크" [ "$(readlink "$H/.cursor/skills/ap-review")" = "$R/skills/ap-review" ]
 OUT="$(HOME="$TMP/h7" /bin/bash "$INST" --skills 2>&1)"
+assert_has "1g Codex trust 안내 1줄" "$OUT" "Codex: 다음 세션 시작 때 훅 승인(trust) 프롬프트에 Yes"
 assert "1g 실제 repo --skills → ~/.agents/skills/ap-review 심링크" [ "$(readlink "$TMP/h7/.agents/skills/ap-review")" = "$ROOT_DIR/skills/ap-review" ]
 assert "1g 심링크 너머 SKILL.md 존재" [ -f "$TMP/h7/.cursor/skills/ap-review/SKILL.md" ]
 R2="$TMP/repo2"; mkdir -p "$R2/scripts"; cp "$INST" "$R2/"; touch "$R2/scripts/ap-capture.sh"

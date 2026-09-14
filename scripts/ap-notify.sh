@@ -20,7 +20,8 @@ INBOX="$(ap_home)/inbox"
 N=0; LAST=""
 for f in "$INBOX"/*.md; do [ -f "$f" ] || continue; N=$((N+1)); LAST="${f##*/}"; done  # glob 은 이름순 → 마지막 = 최근
 [ "$N" -gt 0 ] || exit 0
-MSG="📌 ap inbox ${N}건 (최근 ${LAST:5:5})"  # 파일명 YYYY-MM-DD_… 의 MM-DD
+RECENT="${LAST:5:5}"; case "$RECENT" in [0-9][0-9]-[0-9][0-9]) ;; *) RECENT="-" ;; esac  # 파일명 YYYY-MM-DD_… 의 MM-DD, 형식 밖이면 -
+MSG="📌 ap inbox ${N}건 (최근 $RECENT)"
 # 메시지는 숫자·고정 문구뿐이라 jq 없이 그대로 JSON 에 넣는다
 if [ "$AGENT" = cursor ]; then printf '{"additional_context":"%s"}\n' "$MSG"; else printf '{"systemMessage":"%s"}\n' "$MSG"; fi
 exit 0
