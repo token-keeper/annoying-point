@@ -64,7 +64,7 @@ Claude Code·Codex·Cursor를 하루 여러 시간 쓰며 자기 하네스(글�
 
 - 이벤트: Claude·Codex `UserPromptSubmit`, Cursor `beforeSubmitPrompt`. 훅 스크립트는 bash + jq 1개(`scripts/ap-capture.sh`)를 3 CLI가 공용하고 Cursor만 출력 JSON 분기를 둔다.
 - 매칭: 프롬프트가 정규식 `^[/$]ap([[:space:]]|$)`에 맞을 때만 동작한다(Codex 스킬 호출 표기 `$ap` 포함). `/ap-review`는 매칭 제외 — 리뷰는 AI가 받아야 한다. 그 외 프롬프트는 출력 없이 exit 0으로 통과한다.
-- 동작 순서: ① `$AP_HOME/inbox/<id>.md` 즉시 생성(원문 + frontmatter, `context: pending`. `<id>` = `<YYYY-MM-DD>_<HHMMSS>_<agent>_<repo>_<4hex>` — F-3) ② 백그라운드 포크 요약기 기동(완전 분리, 훅은 기다리지 않음) ③ 프롬프트 block — 사용자에게 `📌 ap #<id> 저장 · context 생성 중` 한 줄 표시, 메인 AI 미전달.
+- 동작 순서: ① `$AP_HOME/inbox/<id>.md` 즉시 생성(원문 + frontmatter, `context: pending`. `<id>` = `<YYYY-MM-DD>_<HHMMSS>_<agent>_<repo>_<4hex>` — F-3) ② 백그라운드 포크 요약기 기동(완전 분리, 훅은 기다리지 않음) ③ 프롬프트 block — 사용자에게 `📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` 한 줄 표시, 메인 AI 미전달.
 - `+` 접두: `kind: good`으로 저장하고 접두는 원문에서 제거한다.
 - 인자 없는 `/ap`: 저장하지 않고 사용법 한 줄을 block으로 표시한다.
 

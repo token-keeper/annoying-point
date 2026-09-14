@@ -34,7 +34,7 @@
 - 의존: 없음
 - 예상 줄수: 스크립트 100 + hooks.json 15 ≈ **115줄**
 - 검증:
-  1. 단위 — `echo '{"prompt":"/ap 표 너무 김","session_id":"s1","transcript_path":"/t.jsonl","cwd":"'"$PWD"'"}' | AP_HOME=$TMP bash scripts/ap-capture.sh` → stdout이 `{"decision":"block","reason":"📌 ap #… 저장 · context 생성 중"}`, `$TMP/inbox/`에 md 1개, frontmatter 10개 키 존재(`context: pending` 포함), `stat -f %Lp` = 600
+  1. 단위 — `echo '{"prompt":"/ap 표 너무 김","session_id":"s1","transcript_path":"/t.jsonl","cwd":"'"$PWD"'"}' | AP_HOME=$TMP bash scripts/ap-capture.sh` → stdout이 `{"decision":"block","reason":"📌 ap 저장됨 #… (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부"}`, `$TMP/inbox/`에 md 1개, frontmatter 10개 키 존재(`context: pending` 포함), `stat -f %Lp` = 600
   2. 단위 — `/ap +좋음` → `kind: good`, 본문에 `+` 없음 · `/ap` 단독 → 사용법 block, 파일 0개 · `/ap-review x` → 출력 없음 exit 0 · `hello` → 출력 없음 exit 0 · `$ap x` → 캡처
   3. 단위 — 같은 초 2회 → 4hex가 다른 파일 2개, 덮어쓰기 0 · `transcript_path: null` → `transcript: -` · git 아닌 cwd → `branch: -`
   4. 단위 — `AP_HOME=/tmp/x`(홈 밖) → block에 원문 포함, 파일 0개 · `PATH`에서 jq 제거 → 출력 없음 exit 0
