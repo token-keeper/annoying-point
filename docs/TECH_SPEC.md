@@ -137,11 +137,13 @@ ap_home() {
 ### 5.1 기동 방식
 
 ```bash
-# ap-capture.sh — 저장 직후, block 출력 직전. LOG="$AP_HOME/log/<id>.log"
+# ap-capture.sh — 저장 직후, block 출력 직전. LOG="$AP_HOME/log/<id>.log". agent 불문 동일
+( perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
+# perl 없으면 폴백 + log 에 "perl 없음 — nohup 폴백" 1줄
 ( nohup bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
 ```
 
-- 서브셸 + `nohup` + fd 전부 리다이렉트로 훅 프로세스와 완전 분리한다. macOS 기본에는 `setsid`가 없어 서브셸 이중 포크로 대체한다. 훅의 stdout 파이프를 넘기지 않아야 CLI가 훅 종료를 즉시 인식한다.
+- 서브셸 + **새 세션(setsid)** + fd 전부 리다이렉트로 훅 프로세스와 완전 분리한다. macOS 기본에 `setsid` 명령이 없어 기본 `/usr/bin/perl`(5.34)의 `POSIX::setsid`로 뗀다. 근거(실측 2026-09-14): Cursor는 훅 종료 시 **프로세스 그룹을 통째로 kill**해 `nohup` 자식이 죽고(log 빈 파일·pending 잔류), setsid로 뗀 것만 생존한다. Claude·Codex는 nohup으로도 살아남으므로 perl이 없을 때만 nohup 폴백. 훅의 stdout 파이프를 넘기지 않아야 CLI가 훅 종료를 즉시 인식한다.
 - 런처의 stdout·stderr는 `log/<id>.log`에 append한다 — 런처 기동 전 실패(bash 없음·권한)도 log에 남는다(자문 5). 이 경우 `context:`는 `pending`으로 남고, 리뷰가 5분 뒤 failed로 취급한다(§7.1).
 - 훅 timeout 안에 끝날 필요 없다. 훅은 기동만 하고 exit 0.
 - 런처는 인자로 받은 md 하나만 읽어 `agent`·`session`·`cwd`·`kind`·원문을 얻는다(단일 출처).
@@ -206,7 +208,7 @@ target: <태그>
 1. md에서 frontmatter(`agent`·`session`·`cwd`·`kind`)와 본문 원문을 §4.2 한 줄 규약으로 읽는다. `session`이 비어 있으면 `context: failed`로 바꾸고 `log/<id>.log`에 `no session` 기록 후 종료.
 2. §5.4 지시에 `{KIND}`·`{TEXT}`를 채운다.
 3. `cd "$cwd"` 후 agent별 §5.2 명령을 §5.1 워치독과 함께 실행한다. stdout은 임시 파일, stderr는 `log/<id>.log`.
-4. 결과 검증 — 순서대로: ① exit 0 → ② JSON 파싱 성공 → ③ `.is_error != true`(필드 있을 때) → ④ `.result`가 비어 있지 않은 문자열(`jq -e '.result | strings | select(length>0)'` — `{}`는 `jq -r .result`로 문자열 `null`·exit 0이 되어 `-r`만으로는 못 잡는다, 실측) → ⑤ 필수 섹션 헤더 5개(`### 상황`·`### 경위`·`### 문제`·`### 추정 원인`·`### 근거`) 존재. 하나라도 실패하면 `context: failed` + log에 단계명·원문 앞 200자. md 본문은 손대지 않는다. 재시도 없음. Codex는 §5.2 미정 항목 확정 후 ②~④를 그 출력 방식에 맞춰 같은 순서로 검증한다.
+4. 결과 검증 — 순서대로: ① exit 0 → ② JSON 파싱 성공 → ③ `.is_error != true`(필드 있을 때) → ④ `.result`가 비어 있지 않은 문자열(`jq -e '.result | strings | select(length>0)'` — `{}`는 `jq -r .result`로 문자열 `null`·exit 0이 되어 `-r`만으로는 못 잡는다, 실측) → ⑤ 필수 섹션 헤더 5개(`### 상황`·`### 경위`·`### 문제`·`### 추정 원인`·`### 근거`) 존재. 하나라도 실패하면 `context: failed` + log에 단계명·원문 앞 600바이트. md 본문은 손대지 않는다. 재시도 없음 — 예외 1개: **Cursor만 ④ 빈 결과(`.result` 빈 문자열/없음)일 때 같은 명령을 1회 재시도**(log `retry 1 (빈 결과)`; 실측 같은 채팅 5회 중 2회 빈 문자열). 헤더 누락·`is_error`·JSON 아님은 재시도하지 않는다. Codex는 §5.2 미정 항목 확정 후 ②~④를 그 출력 방식에 맞춰 같은 순서로 검증한다.
 5. 저장 직전 `[ -e "$MD" ]` 확인. 없으면(리뷰가 이미 processed로 이동) log에 `moved before context`만 남기고 종료 — inbox에 재생성하지 않는다(자문 2). 갱신은 임시 파일을 만든 뒤 `cat "$TMP" > "$MD"`(기존 inode에 덮어쓰기)로 하고 `mv`는 쓰지 않는다 — `mv`는 이동된 경로를 되살린다. `-e` 확인과 쓰기 사이의 밀리초 창은 감수한다(리뷰는 사람 속도).
 6. 첫 줄이 `target:`으로 시작하면 그 값으로 frontmatter(첫 `---`~둘째 `---` 구간)의 `target:` 줄을 바꾼다. 첫 줄이 `target:`이 아니면 `target:`은 비워 둔다.
 7. 나머지 텍스트를 md 끝에 `\n## context\n` 아래로 append한다.
@@ -314,7 +316,8 @@ annoying-point/
 | 같은 초 중복 | 초+4hex 랜덤으로 충돌 없음. noclobber 이중 안전 |
 | 런처 기동 전 실패 (bash 없음·권한) | 훅이 넘긴 stdout·stderr가 `log/<id>.log`에 남음. `context:`는 `pending`으로 남음 → 5분 뒤 리뷰가 failed 취급(§7.1) |
 | 포크 실패 (명령 없음·exit≠0) | `log/<id>.log`에 stderr·exit code, `context: failed`. md 본문은 유지 → 리뷰에서 원문으로. 재시도 없음 |
-| 포크 출력이 JSON 아님·`.result` null·필수 섹션 누락 | `context: failed`, log에 단계명·원문 앞 200자 |
+| 포크 출력이 JSON 아님·`.result` null·필수 섹션 누락 | `context: failed`, log에 단계명·원문 앞 600바이트. Cursor 빈 결과만 1회 재시도(§5.5-4) |
+| Cursor CLI에서 block | 저장·포크는 정상이나 `user_message`가 CLI 화면에 표시되지 않는다(라이브 실측, 한계로 기록). 프롬프트는 중단됨 |
 | 포크 기한 300초 초과 | 워치독이 자식 kill, `context: failed`, log `timeout 300s` |
 | 리뷰가 processed로 이동한 뒤 요약 완료 | 재생성 안 함. log `moved before context` |
 | 포크 출력 첫 줄이 `target:`이 아님 | `target:` 비워 두고 전체를 `## context`로 append. 리뷰 때 AI가 태그 추정 |

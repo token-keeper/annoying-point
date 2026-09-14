@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # annoying-point 백그라운드 요약기 런처 — inbox md 하나를 받아 그 세션을 포크해 5섹션 context 를 붙인다 (docs/TECH_SPEC.md §5).
 # 호출: bash ap-fork.sh <md>   (ap-capture.sh 가 nohup 으로 기동. stdout·stderr 는 이미 log/<id>.log)
-# Claude 분기만 구현(Codex·Cursor 는 커밋 3). 어떤 실패도 context: failed + log 한 줄로 끝나며 md 본문은 손대지 않는다.
+# agent 별 포크 명령은 §5.2. 어떤 실패도 context: failed + log 한 줄로 끝나며 md 본문은 손대지 않는다.
 umask 077
 set -uo pipefail
 
 MD="${1:-}"
 [ -f "$MD" ] || { echo "md 없음: $MD"; exit 1; }
 AP_FORK_TIMEOUT="${AP_FORK_TIMEOUT:-300}"  # 포크 기한(초) — 초과 시 자식 kill → failed
-AP_FORK_CMD="${AP_FORK_CMD:-claude}"       # 테스트용 — claude 대신 가짜 명령
+AP_FORK_CMD="${AP_FORK_CMD:-}"             # 테스트용 — 비어 있으면 agent 별 실제 CLI(claude·codex·cursor-agent)
 
 # AP_HOME 해석 (§4.3) — ap-capture.sh 와 같은 규칙 (공용 파일 없이 복제)
 ap_home() {
@@ -29,8 +29,18 @@ set_field() {
   local v tmp; v="$(printf '%s' "$2" | sed 's/[&|\\]/\\&/g')"; tmp="$(mktemp "$LOG_DIR/.md.XXXXXX")"
   sed "2,/^---$/s|^$1:.*|$1: $v|" "$MD" > "$tmp"; commit_md "$tmp"
 }
-# $1=단계명 $2=원문(앞 200자만 log) → context: failed 후 종료
-fail() { echo "$1${2:+: $(printf '%s' "$2" | head -c 200)}"; set_field context failed; exit 1; }
+# $1=단계명 $2=원문(앞 600바이트만 log) → context: failed 후 종료
+fail() { echo "$1${2:+: $(printf '%s' "$2" | head -c 600)}"; set_field context failed; exit 1; }
+# 결과 텍스트 추출 (§5.5-4 ②~④) — 성공이면 RESULT, 실패면 STEP 에 단계명 두고 return 1.
+# Claude·Cursor 는 JSON(.result), Codex 는 -o 파일의 텍스트 그대로(JSON·is_error 단계 없음)
+extract_result() {
+  if [ "$AGENT" = codex ]; then
+    RESULT="$(cat "$OUT")"; [ -n "$RESULT" ] || { STEP="result 없음"; return 1; }; return 0
+  fi
+  jq -e . "$OUT" >/dev/null 2>&1 || { STEP="json 아님"; return 1; }
+  [ "$(jq -r '.is_error // false' "$OUT")" = false ] || { STEP="is_error"; return 1; }
+  RESULT="$(jq -er '.result | strings | select(length>0)' "$OUT" 2>/dev/null)" || { STEP="result 없음"; return 1; }
+}
 
 LOG_DIR="$(ap_home)/log"; mkdir -p "$LOG_DIR"
 
@@ -66,26 +76,37 @@ target: <태그>
 EOF
 )"
 
-# 3. agent 별 포크 명령 (§5.2) — 모델·config 를 바꾸는 옵션은 붙이지 않는다 (§5.3 캐시 조건). 워치독은 §5.1
-# disableAllHooks: 포크는 헤드리스 1회성이라 훅이 돌 이유가 없고, Stop 훅이 오래 살면(실측: cache-necromancer 50분) -p 가 안 끝난다.
-# 시스템 프롬프트는 안 바뀌므로 캐시 prefix 유지 (실측은 test-fork.sh 검증 1 의 cache_read 비율)
+# 3. agent 별 포크 명령 (§5.2) — 모델·effort·config 를 바꾸는 옵션은 붙이지 않는다 (§5.3 캐시 조건). 워치독은 §5.1
+# Claude disableAllHooks: 포크는 헤드리스 1회성이라 훅이 돌 이유가 없고, Stop 훅이 오래 살면(실측: cache-necromancer 50분) -p 가 안 끝난다.
+#   시스템 프롬프트는 안 바뀌므로 캐시 prefix 유지 (실측은 test-fork.sh 검증 1 의 cache_read 비율)
+# Codex: fork 서브커맨드에 -s 없음 → -c sandbox_mode. --ephemeral 로 rollout 미생성. 결과는 -o 파일(마지막 메시지 텍스트), stdout 은 같은 내용이라 버린다
+# Cursor: fork 없음 → --resume 이 원본 채팅에 append 됨(감수, §5.2). --mode 는 붙이지 않는다 — 대화형 세션(기본 모드)과 모드가 다르면
+#   시스템 프롬프트가 달라져 ~13k 토큰이 uncached(실측). --trust 는 미신뢰 워크스페이스에서 rc=1 방지
+OUT="$(mktemp "$LOG_DIR/.out.XXXXXX")"; trap 'rm -f "$OUT"' EXIT
+SAVE="$OUT"  # 자식 stdout 저장처
 case "$AGENT" in
-  claude) CMD=("$AP_FORK_CMD" -p --settings '{"disableAllHooks":true}' --resume "$SESSION" --fork-session --output-format json "$PROMPT") ;;
-  codex|cursor) fail "agent 미지원(커밋3)" "$AGENT" ;;  # TODO 커밋3
+  claude) CMD=("${AP_FORK_CMD:-claude}" -p --settings '{"disableAllHooks":true}' --resume "$SESSION" --fork-session --output-format json "$PROMPT") ;;
+  codex)  CMD=("${AP_FORK_CMD:-codex}" exec fork "$SESSION" --ephemeral --skip-git-repo-check -c 'sandbox_mode="read-only"' -o "$OUT" "$PROMPT"); SAVE=/dev/null ;;
+  cursor) CMD=("${AP_FORK_CMD:-cursor-agent}" -p --resume "$SESSION" --output-format json --trust "$PROMPT") ;;
   *) fail "agent 알 수 없음" "$AGENT" ;;
 esac
-OUT="$(mktemp "$LOG_DIR/.out.XXXXXX")"; trap 'rm -f "$OUT"' EXIT
+# 실행 + 워치독 → rc. 재시도 때도 같은 명령 그대로
+run_fork() {
+  "${CMD[@]}" </dev/null >"$SAVE" & pid=$!
+  ( sleep "$AP_FORK_TIMEOUT" && echo "timeout ${AP_FORK_TIMEOUT}s" && kill "$pid" ) 2>/dev/null & wd=$!  # stderr 버림: 정상 종료 때 sleep 을 죽이며 나는 "Terminated" 잡음
+  wait "$pid"; rc=$?
+  pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+}
 cd "$CWD" 2>/dev/null || fail "cd 실패" "$CWD"
-"${CMD[@]}" </dev/null >"$OUT" & pid=$!
-( sleep "$AP_FORK_TIMEOUT" && echo "timeout ${AP_FORK_TIMEOUT}s" && kill "$pid" ) 2>/dev/null & wd=$!  # stderr 버림: 정상 종료 때 sleep 을 죽이며 나는 "Terminated" 잡음
-wait "$pid"; rc=$?
-pkill -P "$wd" 2>/dev/null; kill "$wd" 2>/dev/null; wait "$wd" 2>/dev/null
+run_fork
+# Cursor 만 빈 result 1회 재시도 (실측: 같은 채팅 5회 중 2회 빈 문자열). 헤더 누락·is_error·json 아님은 재시도 없음
+if [ "$AGENT" = cursor ] && [ "$rc" -eq 0 ] && ! extract_result && [ "$STEP" = "result 없음" ]; then
+  echo "retry 1 (빈 결과)"; run_fork
+fi
 
-# 4. 결과 검증 5단계 (§5.5-4) — 하나라도 실패하면 failed + 단계명 + 원문 앞 200자
+# 4. 결과 검증 5단계 (§5.5-4) — 하나라도 실패하면 failed + 단계명 + 원문 앞 600바이트
 [ "$rc" -eq 0 ] || fail "exit $rc" "$(cat "$OUT")"
-jq -e . "$OUT" >/dev/null 2>&1 || fail "json 아님" "$(cat "$OUT")"
-[ "$(jq -r '.is_error // false' "$OUT")" = "false" ] || fail "is_error" "$(jq -r '.result // ""' "$OUT")"
-RESULT="$(jq -er '.result | strings | select(length>0)' "$OUT" 2>/dev/null)" || fail "result 없음" "$(cat "$OUT")"
+extract_result || fail "$STEP" "$(cat "$OUT")"
 for h in '### 상황' '### 경위' '### 문제' '### 추정 원인' '### 근거'; do
   printf '%s\n' "$RESULT" | grep -q "^$h" || fail "섹션 누락 $h" "$RESULT"
 done
@@ -97,5 +118,6 @@ TMP="$(mktemp "$LOG_DIR/.md.XXXXXX")"
 { cat "$MD" 2>/dev/null; printf '\n## context\n%s\n' "$RESULT"; } > "$TMP"; commit_md "$TMP"
 set_field context done
 
-# 9. usage 1줄 — PRD §5 cache read 비율 측정용
-echo "usage input=$(jq -r '.usage.input_tokens // 0' "$OUT") cache_read=$(jq -r '.usage.cache_read_input_tokens // 0' "$OUT")"
+# 9. usage 1줄 — PRD §5 cache read 비율 측정용. 키는 Claude input_tokens/cache_read_input_tokens, Cursor inputTokens/cacheReadTokens. Codex 는 안 준다
+if [ "$AGENT" = codex ]; then echo "usage input=- cache_read=-"
+else jq -r '"usage input=\(.usage.input_tokens // .usage.inputTokens // 0) cache_read=\(.usage.cache_read_input_tokens // .usage.cacheReadTokens // 0)"' "$OUT"; fi

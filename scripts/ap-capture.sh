@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # annoying-point 캡처 훅 — "/ap <한마디>" 를 가로채 $AP_HOME/inbox 에 md 로 저장하고 block 한다.
 # Claude 는 UserPromptSubmit(플레인 /ap·$ap) + UserPromptExpansion(플러그인 커맨드 /annoying-point:ap) 두 이벤트에 같은 스크립트를 건다.
+# Codex 는 UserPromptSubmit(Claude 와 같은 스키마), Cursor 는 beforeSubmitPrompt(입력 conversation_id·workspace_roots, 출력 continue/user_message).
 # 트랜스크립트는 읽지 않는다. 어떤 경우에도 exit 0 또는 block 으로 끝난다 (docs/TECH_SPEC.md §3·§4·§9).
 # 호출: bash ap-capture.sh --agent claude|codex|cursor   (기본 claude, stdin = 훅 입력 JSON)
 umask 077
@@ -22,9 +23,10 @@ trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[
 # 첫 토큰(/ap·$ap·/annoying-point:ap) 을 뗀 나머지
 after_head() { printf '%s' "${1#"${1%%[[:space:]]*}"}"; }
 
-# $1=문구 — jq --arg 로 이스케이프해 block JSON 을 내고 종료
+# $1=문구 — jq --arg 로 이스케이프해 block JSON 을 내고 종료. Cursor(beforeSubmitPrompt)만 출력 키가 다르다 (§3.1)
 block() {
-  jq -n --arg r "$1" '{decision:"block",reason:$r}'  # TODO 커밋3: cursor 는 {continue:false,user_message:$r}
+  if [ "$AGENT" = cursor ]; then jq -n --arg r "$1" '{continue:false,user_message:$r}'
+  else jq -n --arg r "$1" '{decision:"block",reason:$r}'; fi
   exit 0
 }
 
@@ -52,9 +54,10 @@ KIND="annoying"
 case "$TEXT" in +*) KIND="good"; TEXT="$(trim "${TEXT#+}")" ;; esac
 [ -z "$TEXT" ] && block "$USAGE"
 
-SESSION="$(printf '%s' "$INPUT" | jq -r '.session_id // empty')"
+# Claude·Codex 는 session_id·cwd, Cursor 는 conversation_id·workspace_roots[0] (§3.1) — 있는 쪽을 쓴다
+SESSION="$(printf '%s' "$INPUT" | jq -r '.session_id // .conversation_id // empty')"
 TRANSCRIPT="$(printf '%s' "$INPUT" | jq -r '.transcript_path // "-"')"
-CWD="$(printf '%s' "$INPUT" | jq -r '.cwd // empty')"; CWD="${CWD:-$PWD}"
+CWD="$(printf '%s' "$INPUT" | jq -r '.workspace_roots[0]? // .cwd // empty')"; CWD="${CWD:-$PWD}"
 REPO="$(basename "$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null)"
 REPO="${REPO:-$(basename "$CWD")}"
 BRANCH="$(git -C "$CWD" branch --show-current 2>/dev/null)"; BRANCH="${BRANCH:--}"
@@ -76,6 +79,13 @@ LOG="$DIR/log/$ID.log"
 if [ -z "$SESSION" ]; then
   echo "no session" >> "$LOG"
 elif [ -f "$SCRIPT_DIR/ap-fork.sh" ]; then
-  ( nohup bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
+  # 새 세션(setsid)으로 뗀다 — Cursor 는 훅 종료 시 프로세스 그룹을 통째로 kill 해 nohup 자식도 죽는다(실측: setsid 로 뗀 것만 생존).
+  # macOS 에 setsid 명령이 없어 기본 perl(5.34) POSIX::setsid 로 대체. perl 없으면 nohup 폴백(Claude·Codex 는 그걸로도 살아남는다)
+  if command -v perl >/dev/null 2>&1; then
+    ( perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV' bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
+  else
+    echo "perl 없음 — nohup 폴백" >> "$LOG"
+    ( nohup bash "$SCRIPT_DIR/ap-fork.sh" "$MD" </dev/null >>"$LOG" 2>&1 & )
+  fi
 fi
 block "📌 ap #$ID 저장 · context 생성 중"
