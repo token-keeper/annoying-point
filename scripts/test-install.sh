@@ -85,7 +85,10 @@ assert_has "1g 심링크 디렉토리 주의 출력" "$OUT" "주의: $H/.agents/
 OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
 assert "1g 재실행 후에도 링크 1개" [ "$(ls "$H/.real-skills" | wc -l | tr -d ' ')" = 1 ]
 OUT="$(HOME="$TMP/h7" /bin/bash "$INST" --skills 2>&1)"
-assert_has "1g 원본 repo 는 skills 없음 → 스킵(커밋5)" "$OUT" "스킵(커밋5)"
+assert "1g 실제 repo --skills → ~/.agents/skills/ap-review 심링크" [ "$(readlink "$TMP/h7/.agents/skills/ap-review")" = "$ROOT_DIR/skills/ap-review" ]
+assert "1g 심링크 너머 SKILL.md 존재" [ -f "$TMP/h7/.cursor/skills/ap-review/SKILL.md" ]
+R2="$TMP/repo2"; mkdir -p "$R2/scripts"; cp "$INST" "$R2/"; touch "$R2/scripts/ap-capture.sh"
+assert_has "1g skills 디렉토리 없는 repo 는 스킵" "$(HOME="$TMP/h7b" /bin/bash "$R2/install.sh" --skills 2>&1)" "스킵(커밋5)"
 assert "1g 사용법 오류" [ "$(HOME="$TMP/h8" /bin/bash "$INST" --nope >/dev/null 2>&1; echo $?)" = 1 ]
 
 echo "== $PASS/$((PASS+FAIL)) 통과"
