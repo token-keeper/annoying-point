@@ -220,8 +220,8 @@ target: <태그>
 
 - `$AP_HOME/inbox/*.md` 개수를 센다. 0이면 아무것도 출력하지 않고 exit 0.
 - 1 이상이면 stdout 1줄: `📌 ap inbox 7건 (최근 09-14)`. "최근"은 파일명 정렬 마지막 파일의 날짜(`MM-DD`).
-- 등록: Claude `hooks/hooks.json`의 `SessionStart`. Codex `SessionStart`(install.sh). Cursor는 해당 이벤트 존재 미확인 → install.sh에서 가능하면 등록, 아니면 생략.
-- Claude `SessionStart` stdout은 AI 컨텍스트에도 추가된다(20토큰 미만). 화면 표시 경로(plain stdout 그대로 vs `systemMessage` JSON)는 구현 때 실측해 확정한다.
+- 등록: Claude `hooks/hooks.json`의 `SessionStart`. Codex `SessionStart`(install.sh). Cursor는 `sessionStart` 이벤트 존재(공식 문서 확인) — 출력은 `additional_context`만 지원(모델 컨텍스트, 화면 표시 아님). install.sh가 등록한다.
+- 출력 형식: Claude·Codex `{"systemMessage":"📌 ap inbox N건 (최근 MM-DD)"}` (plain stdout은 모델 컨텍스트로만 가고 화면에 안 보임 — Claude 라이브 실측: `SessionStart:startup says: 📌 ap inbox 2건 (최근 09-14)` 표시). Cursor `{"additional_context":"…"}`. 메시지가 숫자·고정 문구뿐이라 jq 없이 printf로 JSON을 만든다.
 
 ## 7. `/ap-review` 스킬
 

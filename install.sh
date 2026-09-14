@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# annoying-point 설치 — Codex·Cursor 훅 등록 + $AP_HOME 생성 (+ --skills 스킬 심링크). 재실행 멱등 (docs/TECH_SPEC.md §8).
+# annoying-point 설치 — Codex·Cursor 훅 등록(캡처·SessionStart 알림) + $AP_HOME 생성 (+ --skills 스킬 심링크). 재실행 멱등 (docs/TECH_SPEC.md §8).
 # Claude 는 플러그인 설치(hooks/hooks.json)로 자동 등록되므로 이 스크립트가 필요 없다.
 # 사용: bash install.sh [--skills] [--dry-run]
 #   --skills   ~/.agents/skills·~/.cursor/skills 에 ap-review 심링크 (기본 스킵 — 그 디렉토리가 다른 repo 로 가는 심링크인 환경이 있다)
@@ -9,8 +9,8 @@ umask 077
 command -v jq >/dev/null 2>&1 || { echo "jq 가 필요하다: brew install jq"; exit 1; }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CAP="$ROOT/scripts/ap-capture.sh"
-SKILLS=0; DRY=0; ERR=0; TS="$(date +%Y%m%d%H%M%S)"
+CAP="$ROOT/scripts/ap-capture.sh"; NOTIFY="$ROOT/scripts/ap-notify.sh"
+SKILLS=0; DRY=0; ERR=0; TOUCHED=""; TS="$(date +%Y%m%d%H%M%S)"
 for a in "$@"; do case "$a" in --skills) SKILLS=1 ;; --dry-run) DRY=1 ;; *) echo "사용법: bash install.sh [--skills] [--dry-run]"; exit 1 ;; esac; done
 
 # AP_HOME 해석 (§4.3) — 훅과 같은 규칙
@@ -29,19 +29,25 @@ register() {
   new="$(printf '%s' "$cur" | jq --arg c "$c" "$4")"
   if [ "$DRY" = 1 ]; then echo "[dry-run] $f →"; printf '%s\n' "$new"; return 0; fi
   mkdir -p "$(dirname "$f")"
-  [ -f "$f" ] && { cp "$f" "$f.bak-$TS"; echo "백업: $f.bak-$TS"; }
+  # 백업은 실행당 파일별 1회 — 같은 파일에 두 번째 항목을 넣을 때 방금 쓴 중간 상태를 또 백업하지 않는다
+  case " $TOUCHED " in *" $f "*) ;; *) TOUCHED="$TOUCHED $f"; [ -f "$f" ] && { cp "$f" "$f.bak-$TS"; echo "백업: $f.bak-$TS"; } ;; esac
   printf '%s\n' "$new" > "$f" && echo "추가: $f"
 }
 
-# ② Codex ~/.codex/hooks.json — Claude 와 같은 형식 {hooks:{UserPromptSubmit:[{hooks:[{type,command,timeout}]}]}}
-#    (SessionStart 알림 등록은 커밋 4 에서 여기에 추가)
+# ② Codex ~/.codex/hooks.json — Claude 와 같은 형식 {hooks:{<이벤트>:[{hooks:[{type,command,timeout}]}]}}. 캡처 + SessionStart 알림
 register "$HOME/.codex/hooks.json" "bash \"$CAP\" --agent codex" \
   '[.hooks.UserPromptSubmit[]?.hooks[]?.command // empty] | index($c) != null' \
   '.hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit // []) + [{hooks:[{type:"command",command:$c,timeout:5}]}])' || ERR=1
-# ③ Cursor ~/.cursor/hooks.json — {hooks:{beforeSubmitPrompt:[{command,timeout}]},version:1}
+register "$HOME/.codex/hooks.json" "bash \"$NOTIFY\" --agent codex" \
+  '[.hooks.SessionStart[]?.hooks[]?.command // empty] | index($c) != null' \
+  '.hooks.SessionStart = ((.hooks.SessionStart // []) + [{hooks:[{type:"command",command:$c,timeout:5}]}])' || ERR=1
+# ③ Cursor ~/.cursor/hooks.json — {hooks:{<이벤트>:[{command,timeout}]},version:1}. 캡처(beforeSubmitPrompt) + 알림(sessionStart, additional_context 만 가능)
 register "$HOME/.cursor/hooks.json" "bash \"$CAP\" --agent cursor" \
   '[.hooks.beforeSubmitPrompt[]?.command // empty] | index($c) != null' \
   '.hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) + [{command:$c,timeout:10}]) | .version //= 1' || ERR=1
+register "$HOME/.cursor/hooks.json" "bash \"$NOTIFY\" --agent cursor" \
+  '[.hooks.sessionStart[]?.command // empty] | index($c) != null' \
+  '.hooks.sessionStart = ((.hooks.sessionStart // []) + [{command:$c,timeout:5}]) | .version //= 1' || ERR=1
 
 # ④ $AP_HOME/{inbox,processed,log} — umask 077 로 700
 D="$(ap_home)"
