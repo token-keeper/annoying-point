@@ -102,25 +102,34 @@ echo "== 1f: jq 없음"
 H="$TMP/h5"; mkdir -p "$H"; OUT="$(HOME="$H" PATH=/bin /bin/bash "$INST" 2>&1)"; RC=$?
 assert "1f exit 1" [ "$RC" = 1 ]; assert_has "1f 안내" "$OUT" "brew install jq"
 
-echo "== 1g: --skills (repo 사본으로 심링크 경로 검증)"
-R="$TMP/repo"; mkdir -p "$R/scripts" "$R/skills/ap-review"; cp "$INST" "$R/"; touch "$R/scripts/ap-capture.sh" "$R/skills/ap-review/SKILL.md"
+echo "== 1g: --skills (repo 사본으로 심링크 경로 검증 — add·review 2개)"
+R="$TMP/repo"; mkdir -p "$R/scripts" "$R/skills/add" "$R/skills/review"; cp "$INST" "$R/"; touch "$R/scripts/ap-capture.sh" "$R/skills/add/SKILL.md" "$R/skills/review/SKILL.md"
 H="$TMP/h6"; mkdir -p "$H/.real-skills"; mkdir -p "$H/.agents"; ln -s "$H/.real-skills" "$H/.agents/skills"
 OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
-assert "1g agents 심링크" [ "$(readlink "$H/.agents/skills/ap-review")" = "$R/skills/ap-review" ]
-assert "1g cursor 심링크" [ "$(readlink "$H/.cursor/skills/ap-review")" = "$R/skills/ap-review" ]
+assert "1g agents 심링크 add" [ "$(readlink "$H/.agents/skills/add")" = "$R/skills/add" ]
+assert "1g agents 심링크 review" [ "$(readlink "$H/.agents/skills/review")" = "$R/skills/review" ]
+assert "1g cursor 심링크 add" [ "$(readlink "$H/.cursor/skills/add")" = "$R/skills/add" ]
+assert "1g cursor 심링크 review" [ "$(readlink "$H/.cursor/skills/review")" = "$R/skills/review" ]
 assert_has "1g 심링크 디렉토리 주의 출력" "$OUT" "주의: $H/.agents/skills 는 심링크 → $H/.real-skills"
 OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
-assert "1g 재실행 후에도 링크 1개" [ "$(ls "$H/.real-skills" | wc -l | tr -d ' ')" = 1 ]
-H="$TMP/h6b"; mkdir -p "$H/.agents/skills/ap-review"; OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
-assert_has "1g 실제 디렉토리 존재 → 스킵" "$OUT" "실제 디렉토리 존재 — 스킵: $H/.agents/skills/ap-review"
-assert "1g 실제 디렉토리 안에 링크 안 만듦" [ ! -e "$H/.agents/skills/ap-review/ap-review" ]
-assert "1g cursor 쪽은 정상 링크" [ "$(readlink "$H/.cursor/skills/ap-review")" = "$R/skills/ap-review" ]
+assert "1g 재실행 후에도 링크 2개" [ "$(ls "$H/.real-skills" | wc -l | tr -d ' ')" = 2 ]
+H="$TMP/h6b"; mkdir -p "$H/.agents/skills/review"; OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
+assert_has "1g 실제 디렉토리 존재 → 스킵" "$OUT" "실제 디렉토리 존재 — 스킵: $H/.agents/skills/review"
+assert "1g 실제 디렉토리 안에 링크 안 만듦" [ ! -e "$H/.agents/skills/review/review" ]
+assert "1g 같은 디렉토리의 다른 스킬(add)은 정상 링크" [ "$(readlink "$H/.agents/skills/add")" = "$R/skills/add" ]
+assert "1g cursor 쪽은 정상 링크" [ "$(readlink "$H/.cursor/skills/review")" = "$R/skills/review" ]
+OUT="$(HOME="$TMP/h6c" /bin/bash "$R/install.sh" --skills --dry-run 2>&1)"
+assert_has "1g dry-run 출력 add" "$OUT" "[dry-run] $TMP/h6c/.agents/skills/add → $R/skills/add"
+assert_has "1g dry-run 출력 review" "$OUT" "[dry-run] $TMP/h6c/.cursor/skills/review → $R/skills/review"
+assert "1g dry-run 링크 미생성" [ ! -e "$TMP/h6c/.agents" -a ! -e "$TMP/h6c/.cursor/skills" ]
 OUT="$(HOME="$TMP/h7" /bin/bash "$INST" --skills 2>&1)"
 assert_has "1g Codex trust 안내 1줄" "$OUT" "Codex: 다음 세션 시작 때 훅 승인(trust) 프롬프트에 Yes"
-assert "1g 실제 repo --skills → ~/.agents/skills/ap-review 심링크" [ "$(readlink "$TMP/h7/.agents/skills/ap-review")" = "$ROOT_DIR/skills/ap-review" ]
-assert "1g 심링크 너머 SKILL.md 존재" [ -f "$TMP/h7/.cursor/skills/ap-review/SKILL.md" ]
+assert "1g 실제 repo --skills → ~/.agents/skills/{add,review} 심링크" [ "$(readlink "$TMP/h7/.agents/skills/add")" = "$ROOT_DIR/skills/add" -a "$(readlink "$TMP/h7/.agents/skills/review")" = "$ROOT_DIR/skills/review" ]
+assert "1g 심링크 너머 SKILL.md 존재" [ -f "$TMP/h7/.cursor/skills/add/SKILL.md" -a -f "$TMP/h7/.cursor/skills/review/SKILL.md" ]
 R2="$TMP/repo2"; mkdir -p "$R2/scripts"; cp "$INST" "$R2/"; touch "$R2/scripts/ap-capture.sh"
-assert_has "1g skills 디렉토리 없는 repo 는 스킵" "$(HOME="$TMP/h7b" /bin/bash "$R2/install.sh" --skills 2>&1)" "스킵(커밋5)"
+OUT="$(HOME="$TMP/h7b" /bin/bash "$R2/install.sh" --skills 2>&1)"
+assert_has "1g skills 디렉토리 없는 repo 는 스킵" "$OUT" "스킬 심링크: 스킵 — $R2/skills/add 없음"
+assert "1g skills 없는 repo 는 링크 0" [ ! -e "$TMP/h7b/.agents" -a ! -e "$TMP/h7b/.cursor/skills" ]
 assert "1g 사용법 오류" [ "$(HOME="$TMP/h8" /bin/bash "$INST" --nope >/dev/null 2>&1; echo $?)" = 1 ]
 
 echo "== $PASS/$((PASS+FAIL)) 통과"

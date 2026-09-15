@@ -4,11 +4,11 @@
 
 ## 1. 개요·범위
 
-`/ap <한마디>`를 훅이 가로채 `$AP_HOME/inbox/`에 md로 즉시 저장하고 프롬프트를 block한 뒤, 백그라운드에서 그 세션을 포크해 5섹션 context를 같은 md에 붙인다. `/ap-review`는 현재 세션 AI가 대화형으로 진행하는 스킬이다.
+`/add <한마디>`를 훅이 가로채 `$AP_HOME/inbox/`에 md로 즉시 저장하고 프롬프트를 block한 뒤, 백그라운드에서 그 세션을 포크해 5섹션 context를 같은 md에 붙인다. `/review`는 현재 세션 AI가 대화형으로 진행하는 스킬이다.
 
 | 구분 | 내용 |
 |---|---|
-| 범위 | 캡처 훅(3 CLI) · 백그라운드 포크 요약기 · `AP_HOME` 저장 · SessionStart 알림 · `/ap-review` 스킬 · `install.sh` |
+| 범위 | 캡처 훅(3 CLI) · 백그라운드 포크 요약기 · `AP_HOME` 저장 · SessionStart 알림 · `/review` 스킬 · `install.sh` |
 | 비범위 | 자동 수정 · 백그라운드 리뷰 · 동기화 · 웹 UI · 트랜스크립트 직접 파싱 · 마켓플레이스 등록(PLAN 마지막 단계) |
 | 런타임 | bash + jq. 외부 의존성은 jq뿐. 트랜스크립트 파싱 코드 없음(포크가 대신 읽음) |
 | 상태 | `$AP_HOME` 아래 md·log 파일만. 인덱스·DB 없음 |
@@ -16,7 +16,7 @@
 ## 2. 아키텍처
 
 ```
-사용자 ──"/ap 표 너무 김"──▶ CLI ──UserPromptSubmit / beforeSubmitPrompt──▶ scripts/ap-capture.sh
+사용자 ──"$add 표 너무 김"──▶ CLI ──UserPromptSubmit / beforeSubmitPrompt──▶ scripts/ap-capture.sh
                                                                               │
    ┌──────────────────────────────────────────────────────────────────────────┤
    │ ① $AP_HOME/inbox/<id>.md 즉시 생성 (frontmatter + 원문), 권한 600            │
@@ -31,7 +31,7 @@
               ─▶ 실패(exit≠0·빈 출력) → $AP_HOME/log/<id>.log 에 stderr·exit code, md는 context 없이 유지
 
 세션 시작 ──SessionStart──▶ scripts/ap-notify.sh ──▶ "📌 ap inbox 7건 (최근 09-14)" (0건이면 무출력)
-사용자 ──"/ap-review"──▶ 훅 통과(매칭 제외) ──▶ 현재 세션 AI가 skills/ap-review/SKILL.md 절차 수행
+사용자 ──"$review"──▶ 훅 통과(매칭 제외) ──▶ 현재 세션 AI가 skills/review/SKILL.md 절차 수행
 ```
 
 역할 경계:
@@ -39,7 +39,7 @@
 - `ap-capture.sh` — 매칭·저장·block·포크 기동. 1초 안에 끝난다. 트랜스크립트를 읽지 않는다.
 - `ap-fork.sh` — agent별 포크 명령 실행, 출력 파싱, md 갱신, 로그. 몇 초~수십 초 걸려도 된다.
 - `ap-notify.sh` — 파일 개수 세기 1줄. LLM 미개입.
-- `skills/ap-review/SKILL.md` — 코드 없음. AI가 따르는 절차 문서.
+- `skills/review/SKILL.md` — 코드 없음. `skills/add/SKILL.md` — Codex·Cursor 자동완성용 안내만. AI가 따르는 절차 문서.
 
 ## 3. 캡처 훅 계약
 
@@ -47,7 +47,7 @@
 
 | CLI | 이벤트 | 입력 필드 (stdin JSON) | block 출력 (stdout) | transcript 경로 |
 |---|---|---|---|---|
-| Claude Code | `UserPromptSubmit` (플레인 `/ap`·`$ap`) + `UserPromptExpansion` (플러그인 커맨드 `/annoying-point:ap`, matcher `^(annoying-point:ap\|ap)$`) | `session_id`, `transcript_path`, `cwd`, `prompt`, `hook_event_name` — Expansion은 `command_name`·`command_args` 병기 | `{"decision":"block","reason":"…"}` (exit 0) 또는 exit 2 + stderr | `transcript_path` ✅ |
+| Claude Code | `UserPromptSubmit` (플레인 `$add`) + `UserPromptExpansion` (플러그인 커맨드 `/annoying-point:add`, matcher `^annoying-point:add$`) | `session_id`, `transcript_path`, `cwd`, `prompt`, `hook_event_name` — Expansion은 `command_name`·`command_args` 병기 | `{"decision":"block","reason":"…"}` (exit 0) 또는 exit 2 + stderr | `transcript_path` ✅ |
 | Codex 0.154.0 | `UserPromptSubmit` | `session_id`, `transcript_path`(string \| null), `cwd`, `prompt`, `turn_id`, `permission_mode` | Claude와 동일 `{"decision":"block","reason":"…"}` | `transcript_path` ✅ (null 가능) |
 | Cursor | `beforeSubmitPrompt` | `prompt`, `attachments`, `conversation_id`, `generation_id`, `model`, `workspace_roots`, `transcript_path`, `cursor_version` | `{"continue":false,"user_message":"…"}` | `transcript_path` ✅ |
 
@@ -59,14 +59,14 @@
 
 | 입력 | 처리 |
 |---|---|
-| `^[/$]ap([[:space:]]|$)` 매칭 (`/ap …`, `$ap …`) | 캡처 |
-| `/ap-review …` | 매칭 제외 → 출력 없이 exit 0 (리뷰는 AI가 받아야 함) |
+| `^([/$]add|/annoying-point:add)([[:space:]]|$)` 매칭 (`/add …`, `$add …`, `/annoying-point:add …`) | 캡처 |
+| `$review …`·`/add-review …` | 매칭 제외 → 출력 없이 exit 0 (리뷰는 AI가 받아야 함. 접미 확장은 공백·줄 끝 조건으로 걸러진다) |
 | 그 외 모든 프롬프트 | 출력 없이 exit 0 |
-| `/ap` 단독·공백만·`/ap +`처럼 `+` 제거 후 공백만 남음 | 저장 없이 block: `📌 ap 사용법: /ap <한마디> · /ap +<좋은점>` |
-| `/ap +한마디` | `kind: good`, 원문에서 `+` 접두 제거 후 저장 |
+| `/add` 단독·공백만·`/add +`처럼 `+` 제거 후 공백만 남음 | 저장 없이 block: `📌 ap 사용법: $add <한마디> · $add +<좋은점>` |
+| `/add +한마디` | `kind: good`, 원문에서 `+` 접두 제거 후 저장 |
 | 캡처 성공 | block: `📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` (`<id>` = 파일명에서 `.md` 제외) |
 
-- bash 3.2 `[[ =~ ]]`는 `\s`를 지원하지 않는다(실측 — `/ap 테스트` 미매칭) → `[[:space:]]` 사용. `grep -E`도 같은 표기.
+- bash 3.2 `[[ =~ ]]`는 `\s`를 지원하지 않는다(실측 — `/add 테스트` 미매칭) → `[[:space:]]` 사용. `grep -E`도 같은 표기.
 
 Cursor는 같은 문구를 `{"continue":false,"user_message":"…"}`로 낸다. block 문구는 jq `--arg`로 이스케이프한다(whip 선례).
 
@@ -177,7 +177,7 @@ ap_home() {
 
 ### 5.4 요약기 지시(프롬프트) 전문 초안
 
-`/ap`로 시작하지 않는다 — 포크 세션의 훅에 다시 잡히지 않기 위해서다. `{KIND}`·`{TEXT}`는 런처가 md에서 채운다.
+`/add`·`$add`로 시작하지 않는다 — 포크 세션의 훅에 다시 잡히지 않기 위해서다. `{KIND}`·`{TEXT}`는 런처가 md에서 채운다.
 
 ```text
 방금 이 세션에서 사용자가 다음 기록을 남겼다. 도구를 쓰지 말고, 지금까지의 이 대화 내용만 근거로 아래 형식의 텍스트만 출력하라. 인사·확인·질문·형식 밖의 문장은 쓰지 않는다.
@@ -224,7 +224,7 @@ target: <태그>
 - 등록: Claude `hooks/hooks.json`의 `SessionStart`. Codex `SessionStart`(install.sh). Cursor는 `sessionStart` 이벤트 존재(공식 문서 확인) — 출력은 `additional_context`만 지원(모델 컨텍스트, 화면 표시 아님). install.sh가 등록한다.
 - 출력 형식: Claude·Codex `{"systemMessage":"📌 ap inbox N건 (최근 MM-DD)"}` (plain stdout은 모델 컨텍스트로만 가고 화면에 안 보임 — Claude 라이브 실측: `SessionStart:startup says: 📌 ap inbox 2건 (최근 09-14)` 표시). Cursor `{"additional_context":"…"}`. 메시지가 숫자·고정 문구뿐이라 jq 없이 printf로 JSON을 만든다.
 
-## 7. `/ap-review` 스킬
+## 7. `/review` 스킬
 
 ### 7.1 절차 (대화형, 현재 세션)
 
@@ -246,10 +246,10 @@ target: <태그>
 
 ```markdown
 ---
-name: ap-review
+name: review
 description: $AP_HOME/inbox에 쌓인 짜증·좋은점 기록을 target별로 모아 진단하고, 승인받은 수정안만 하네스에 반영한다
 ---
-# ap-review
+# review
 
 ## 0. 준비
 AP_HOME 해석: env AP_HOME → ~/.config/ap/config 의 AP_HOME= 줄 → ~/.local/share/ap. inbox 0건이면 "inbox 비어 있음" 한 줄로 끝.
@@ -268,8 +268,9 @@ AP_HOME 해석: env AP_HOME → ~/.config/ap/config 의 AP_HOME= 줄 → ~/.loca
 annoying-point/
 ├── .claude-plugin/plugin.json      # name annoying-point, 메타데이터만
 ├── hooks/hooks.json                # UserPromptSubmit(가로채기) · SessionStart(알림)
-├── commands/ap.md                  # /ap 등록용(자동완성). 본문은 "훅이 처리, 여기 오면 안 됨" 안내
-├── skills/ap-review/SKILL.md       # 대화형 리뷰 스킬 (Claude·Codex·Cursor 공용 SKILL.md 표준)
+├── commands/add.md                 # /annoying-point:add 등록용(자동완성). 본문은 "훅이 처리, 여기 오면 안 됨" 안내
+├── skills/add/SKILL.md             # Codex·Cursor $add 자동완성용. 본문은 commands/add.md 와 같은 안내
+├── skills/review/SKILL.md          # 대화형 리뷰 스킬 (Claude·Codex·Cursor 공용 SKILL.md 표준)
 ├── scripts/
 │   ├── ap-capture.sh               # 훅 본체 (bash+jq). --agent 분기
 │   ├── ap-fork.sh                  # 백그라운드 요약기 런처 (agent별 분기)
@@ -285,20 +286,20 @@ annoying-point/
 {
   "hooks": {
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ap-capture.sh\" --agent claude", "timeout": 5 }] }],
-    "UserPromptExpansion": [{ "matcher": "^(annoying-point:ap|ap)$", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ap-capture.sh\" --agent claude", "timeout": 5 }] }],
+    "UserPromptExpansion": [{ "matcher": "^annoying-point:add$", "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ap-capture.sh\" --agent claude", "timeout": 5 }] }],
     "SessionStart":     [{ "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/ap-notify.sh\"", "timeout": 5 }] }]
   }
 }
 ```
 
-`commands/ap.md` — 자동완성 등록용. 훅이 정상이면 이 파일은 로드되지 않는다. 로드됐다면 훅 미등록·jq 없음이므로 본문은 AI에게 "원문을 그대로 다시 보여주고 `install.sh` 실행 또는 `brew install jq`를 안내하라. 다른 작업 금지"만 지시한다.
+`commands/add.md` — 자동완성 등록용. 훅이 정상이면 이 파일은 로드되지 않는다. 로드됐다면 훅 미등록·jq 없음이므로 본문은 AI에게 "원문을 그대로 다시 보여주고 `install.sh` 실행 또는 `brew install jq`를 안내하라. 다른 작업 금지"만 지시한다.
 
 `install.sh`가 하는 일 (Codex·Cursor, 1회, 재실행 멱등):
 
 1. `jq` 존재 확인. 없으면 안내 후 exit 1.
 2. `~/.codex/hooks.json`에 `UserPromptSubmit`(`ap-capture.sh --agent codex`)·`SessionStart`(`ap-notify.sh`) 엔트리를 jq로 병합. 스크립트는 **절대경로**로 기록. 기존 엔트리 보존, 같은 command가 있으면 추가하지 않음.
 3. `~/.cursor/hooks.json`에 `beforeSubmitPrompt`(`ap-capture.sh --agent cursor`) 엔트리 병합. SessionStart 상당 이벤트가 있으면 알림도 등록, 없으면 생략.
-4. 스킬 심링크: `~/.agents/skills/ap-review` · `~/.cursor/skills/ap-review` → repo `skills/ap-review`.
+4. 스킬 심링크: `~/.agents/skills/{add,review}` · `~/.cursor/skills/{add,review}` → repo `skills/add` · `skills/review`.
 5. `$AP_HOME/{inbox,processed,log}` 생성(권한 700).
 6. Claude는 이 스크립트가 필요 없다 — 플러그인 설치로 훅·명령·스킬이 자동 등록된다.
 
@@ -310,7 +311,7 @@ annoying-point/
 
 | 상황 | 처리 |
 |---|---|
-| jq 없음 | 출력 없이 exit 0 → 프롬프트가 AI에 통과. Claude는 `commands/ap.md` 안내가 AI에 전달돼 사용자가 알게 됨. Codex·Cursor는 1턴 소비. install.sh와 README가 jq를 선행 조건으로 안내 |
+| jq 없음 | 출력 없이 exit 0 → 프롬프트가 AI에 통과. Claude는 `commands/add.md`, Codex·Cursor는 `add` 스킬 안내가 AI에 전달돼 사용자가 알게 됨. Codex·Cursor는 1턴 소비. install.sh와 README가 jq를 선행 조건으로 안내 |
 | stdin JSON 파싱 실패 | 출력 없이 exit 0 |
 | `AP_HOME` 쓰기 불가 (mkdir·파일 생성 실패, `$HOME` 밖) | block: `📌 ap 저장 실패 (<경로> 쓰기 불가) — 원문: <text>`. 원문을 다시 보여줘 유실 방지. 포크 기동 안 함 |
 | `transcript_path` null (Codex) | frontmatter `transcript: -`로 저장. 포크는 `session_id`로 정상 시도(포크는 transcript를 쓰지 않음) |
@@ -323,7 +324,7 @@ annoying-point/
 | 포크 기한 300초 초과 | 워치독이 자식 kill, `context: failed`, log `timeout 300s` |
 | 리뷰가 processed로 이동한 뒤 요약 완료 | 재생성 안 함. log `moved before context` |
 | 포크 출력 첫 줄이 `target:`이 아님 | `target:` 비워 두고 전체를 `## context`로 append. 리뷰 때 AI가 태그 추정 |
-| 포크 세션에서 훅 재진입 | 요약 지시가 `/ap`로 시작하지 않으므로 매칭 안 됨 → 통과. 별도 가드 없음 |
+| 포크 세션에서 훅 재진입 | 요약 지시가 `/add`·`$add`로 시작하지 않으므로 매칭 안 됨 → 통과. 별도 가드 없음 |
 | git 아닌 디렉토리 | `repo` = `basename "$cwd"`, `branch` = `-` |
 | SessionStart에서 `AP_HOME` 없음 | 출력 없이 exit 0 |
 
@@ -400,3 +401,9 @@ annoying-point/
 | astra#4 | `command_args`가 문자열이 아닐 때 처리 | Claude 2.1.270 바이너리 실측 — `prompt="/${name} ${args}"`, `command_args`는 항상 문자열이라 미도달 |
 | fable#1 | Codex `[features] hooks=true` 안내 필요 | 설정 없이도 훅 동작 실측(리더). 불필요한 안내는 넣지 않는다 |
 | fable#4 | 원문을 argv 대신 stdin으로 | stdin 전환은 같은 계정 노출을 없애지 못함 — 감수하고 §10에 기록 |
+
+## 14. 이름 변경 (v0.2.0, 2026-09-15)
+
+- 사용자 명령을 `ap`→`add`, `ap-review`→`review`로 바꿨다 (Claude `/annoying-point:add`·`/annoying-point:review`, 평문·Codex·Cursor `$add`·`$review`). 이유: `ap`는 뜻이 없어 검색·기억이 안 됨. Codex·Cursor 자동완성용 `add` 스킬을 추가했다(실제 처리는 훅).
+- 내부 식별자는 유지 — `--agent`, 파일명 `ap-capture.sh`·`ap-fork.sh`·`ap-notify.sh`, `AP_HOME`, `~/.config/ap/config`, `~/.local/share/ap`, `📌 ap 저장됨`·`📌 ap inbox` 문구, md frontmatter 키. 저장 포맷·환경 호환을 깨지 않기 위해서다.
+- 호환 없음 — `$ap`·`/annoying-point:ap`는 더 이상 캡처되지 않고 프롬프트가 AI에 통과한다. §11~§13의 검증 기록은 개명 전 이름 그대로 둔다.

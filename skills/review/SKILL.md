@@ -1,10 +1,10 @@
 ---
-name: ap-review
-description: $AP_HOME/inbox에 쌓인 짜증·좋은점 기록(/ap 캡처)을 target별로 묶어 진단하고, 그룹 하나씩 승인받은 수정안만 하네스(CLAUDE.md·AGENTS.md·rules·skills·훅)에 반영한 뒤 processed로 옮기는 대화형 리뷰. 사용자가 /ap-review를 호출하거나 "ap 리뷰", "짜증 리뷰", "ap inbox 정리", "ap 피드백 정리" 류를 명시적으로 요청할 때 사용. 명시 호출 없이는 자동 발동하지 않는다.
+name: review
+description: $AP_HOME/inbox에 쌓인 짜증·좋은점 기록(/add 캡처)을 target별로 묶어 진단하고, 그룹 하나씩 승인받은 수정안만 하네스(CLAUDE.md·AGENTS.md·rules·skills·훅)에 반영한 뒤 processed로 옮기는 대화형 리뷰. 사용자가 /annoying-point:review를 호출하거나 "annoying-point 리뷰", "add 리뷰", "짜증 리뷰", "ap inbox 정리", "ap 피드백 정리" 류를 명시적으로 요청할 때 사용. 명시 호출 없이는 자동 발동하지 않는다.
 ---
-# ap-review — 짜증·좋은점 inbox 리뷰
+# review — 짜증·좋은점 inbox 리뷰
 
-`/ap <한마디>`로 쌓인 기록을 모아 원인 파일을 찾고, 승인받은 것만 고친다. 전 과정을 **현재 세션이 직접, 대화형으로** 수행한다 —
+`/add <한마디>`로 쌓인 기록을 모아 원인 파일을 찾고, 승인받은 것만 고친다. 전 과정을 **현재 세션이 직접, 대화형으로** 수행한다 —
 서브에이전트·헤드리스 위임 없음, 커밋·push 없음, `$AP_HOME`과 승인된 diff의 대상 파일 외에는 쓰지 않는다. 한글로 진행한다.
 
 ## 0. 준비
@@ -77,9 +77,9 @@ md 포맷은 한 줄 규약이다 — frontmatter는 YAML이 아니라 `key: val
 ```
 **무슨 일이었나** — "브리핑 html에서 채점하기 귀찮음". 브리핑을 보고 온 뒤 점수를 다시 매기라고 해서 남긴 것, 1번.
 **진짜 문제** — br-briefing 스킬 '회수 모드'가 브리핑 HTML의 점수 버튼으로 피드백을 받도록 되어 있어서.
-**고칠 것** — 회수 모드 대신 /ap로 남기게 안내 문장 1줄을 넣는다. 파일: ~/.claude/skills/br-briefing/SKILL.md
+**고칠 것** — 회수 모드 대신 /add로 남기게 안내 문장 1줄을 넣는다. 파일: ~/.claude/skills/br-briefing/SKILL.md
   전: 회수 모드 — HTML 하단 점수 버튼으로 피드백을 받는다
-  후: 회수 모드(레거시) — 피드백은 /ap 한마디로 남기고 /ap-review에서 처리한다
+  후: 회수 모드(레거시) — 피드백은 /add 한마디로 남기고 /review에서 처리한다
 1 고친다 — 위대로 바꾸고 이 기록은 처리함으로 옮긴다 (추천 — 같은 불만이 또 나올 자리)
 2 안 고친다 — 그대로 두고 이유만 남긴다
 3 나중에 — 손대지 않고 다음 리뷰에 다시 본다
