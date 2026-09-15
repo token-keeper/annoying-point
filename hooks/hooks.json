@@ -13,7 +13,7 @@
     ],
     "UserPromptExpansion": [
       {
-        "matcher": "^(annoying-point:ap|ap)$",
+        "matcher": "^annoying-point:add$",
         "hooks": [
           {
             "type": "command",
