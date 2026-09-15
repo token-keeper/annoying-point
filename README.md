@@ -1,6 +1,8 @@
 # annoying-point
 
-AI로 개발하다 짜증나는 점·좋은 점을 `$ap <한마디>` 한 줄로 그 자리에서 남기고, 나중에 `ap-review`로 모아 하네스(CLAUDE.md·룰·스킬·훅)를 고치는 플러그인. Claude Code · Codex CLI · Cursor Agent CLI 공용.
+> v0.2.0에서 명령 이름을 `ap`→`add`, `ap-review`→`review`로 바꿨다 — `$ap`·`/annoying-point:ap`는 더 이상 캡처되지 않는다 (호환 없음).
+
+AI로 개발하다 짜증나는 점·좋은 점을 `$add <한마디>` 한 줄로 그 자리에서 남기고, 나중에 `review`로 모아 하네스(CLAUDE.md·룰·스킬·훅)를 고치는 플러그인. Claude Code · Codex CLI · Cursor Agent CLI 공용.
 
 왜: "이건 룰을 무시했다", "표가 너무 길다", "이 판단은 좋았다" 같은 순간은 하루에도 여러 번 생기지만, 메인 세션에 말하면 턴·토큰을 쓰고 작업 흐름이 끊긴다. 따로 메모하면 며칠 뒤 어느 세션·어느 룰 때문이었는지 복원할 수 없다. 답은 그 세션 안에 있으니, 사용자는 한마디만 남기고 상황 복원은 그 세션을 포크한 AI가 대신한다.
 
@@ -11,7 +13,7 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$ap <한마디>` 한 줄로 
 ## 동작
 
 ```
-사용자 ──"$ap 표 너무 김"──▶ CLI ──UserPromptSubmit / beforeSubmitPrompt──▶ scripts/ap-capture.sh
+사용자 ──"$add 표 너무 김"──▶ CLI ──UserPromptSubmit / beforeSubmitPrompt──▶ scripts/ap-capture.sh
                                                                             │
    ┌────────────────────────────────────────────────────────────────────────┤
    │ ① $AP_HOME/inbox/<id>.md 즉시 생성 (frontmatter + 원문, 권한 600)        │
@@ -25,7 +27,7 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$ap <한마디>` 한 줄로 
               ─▶ 실패 → `context: failed` + $AP_HOME/log/<id>.log (md 원문은 유지)
 
 세션 시작 ──SessionStart──▶ scripts/ap-notify.sh ──▶ "📌 ap inbox 3건 (최근 09-14)" (0건이면 무출력)
-사용자 ──ap-review──▶ 훅 통과 ──▶ 현재 세션 AI가 skills/ap-review/SKILL.md 절차를 대화형으로 수행
+사용자 ──review──▶ 훅 통과 ──▶ 현재 세션 AI가 skills/review/SKILL.md 절차를 대화형으로 수행
 ```
 
 ## 설치
@@ -44,12 +46,12 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$ap <한마디>` 한 줄로 
 3. `~/.cursor/hooks.json`에 `beforeSubmitPrompt`(캡처) · `sessionStart`(알림) 병합
 4. 기존 항목 보존 — 같은 command가 이미 있으면 건너뛰고, 올바르지 않은 JSON은 손대지 않는다. 파일을 바꾸기 전 `<파일>.bak-<타임스탬프>`로 백업
 5. `$AP_HOME/{inbox,processed,log}` 생성 (권한 700)
-6. `--skills`를 주면 `~/.agents/skills/ap-review` · `~/.cursor/skills/ap-review` 심링크 생성 (기본은 스킵 — 그 디렉토리가 다른 repo로 가는 심링크인 환경 보호)
+6. `--skills`를 주면 `~/.agents/skills/{add,review}` · `~/.cursor/skills/{add,review}` 심링크 생성 (기본은 스킵 — 그 디렉토리가 다른 repo로 가는 심링크인 환경 보호)
 
 ```bash
 bash install.sh --dry-run     # 바뀔 JSON만 출력, 파일은 손대지 않는다
 bash install.sh               # 훅 등록 + AP_HOME 생성
-bash install.sh --skills      # + ap-review 스킬 심링크 (Codex·Cursor에서 리뷰를 쓰려면 필요)
+bash install.sh --skills      # + add·review 스킬 심링크 (Codex·Cursor에서 $add 자동완성·리뷰를 쓰려면 필요)
 ```
 
 ## 사용법
@@ -58,19 +60,19 @@ bash install.sh --skills      # + ap-review 스킬 심링크 (Codex·Cursor에�
 
 | CLI | 입력 |
 |---|---|
-| Claude Code | `/annoying-point:ap <한마디>` 또는 플레인 텍스트 `$ap <한마디>` |
-| Codex CLI | `$ap <한마디>` |
-| Cursor | `$ap <한마디>` |
+| Claude Code | `/annoying-point:add <한마디>` 또는 플레인 텍스트 `$add <한마디>` |
+| Codex CLI | `$add <한마디>` |
+| Cursor | `$add <한마디>` |
 
-- 좋은점은 `+` 접두: `$ap +브리핑 표 형식 좋음` → `kind: good`으로 저장 (접두는 원문에서 제거).
-- 인자 없는 `$ap`는 저장하지 않고 사용법 한 줄만 표시한다.
-- bare `/ap`는 세 CLI 모두 미등록 슬래시 커맨드라 훅에 도달하지 않는다 (실측). Claude는 네임스페이스 `/annoying-point:ap`, 나머지는 `$ap`.
+- 좋은점은 `+` 접두: `$add +브리핑 표 형식 좋음` → `kind: good`으로 저장 (접두는 원문에서 제거).
+- 인자 없는 `$add`는 저장하지 않고 사용법 한 줄만 표시한다.
+- bare `/add`는 세 CLI 모두 미등록 슬래시 커맨드라 훅에 도달하지 않는다 (실측). Claude는 네임스페이스 `/annoying-point:add`, 나머지는 `$add`. Codex·Cursor의 `add` 스킬은 자동완성용이며 실제 처리는 훅이 가로챈다.
 
 화면 표시 (실측):
 
 | CLI | 표시 |
 |---|---|
-| Claude Code | `/annoying-point:ap` → `UserPromptExpansion operation blocked by hook: 📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` · `$ap` → `UserPromptSubmit operation blocked by hook: 📌 …` |
+| Claude Code | `/annoying-point:add` → `UserPromptExpansion operation blocked by hook: 📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` · `$add` → `UserPromptSubmit operation blocked by hook: 📌 …` |
 | Codex CLI | `Blocked by hook` |
 | Cursor | 프롬프트만 사라지고 메시지는 표시되지 않는다 (저장·포크는 정상) |
 
@@ -82,9 +84,9 @@ bash install.sh --skills      # + ap-review 스킬 심링크 (Codex·Cursor에�
 
 | CLI | 입력 |
 |---|---|
-| Claude Code | `/annoying-point:ap-review` |
-| Codex CLI | `$ap-review` |
-| Cursor | 스킬 로딩(`install.sh --skills` 또는 프로젝트 `.cursor/skills/ap-review` 심링크) 후 "ap 리뷰 해줘" 같은 명시 요청 — 실측: 슬래시 목록에는 안 뜨고 자연어 요청으로 `Used ap-review` 로딩됨 |
+| Claude Code | `/annoying-point:review` |
+| Codex CLI | `$review` |
+| Cursor | 스킬 로딩(`install.sh --skills` 또는 프로젝트 `.cursor/skills/review` 심링크) 후 "review 스킬로 리뷰해줘" 같은 명시 요청 — 실측: 슬래시 목록에는 안 뜨고 자연어 요청으로 `Used review` 로딩됨 |
 
 현재 세션 AI가 대화형으로 진행한다: inbox 전부 읽기 → `target`별 그룹 → 진단(반복 vs 1회성, 원인 파일 특정) → 그룹당 diff 1개 → **그룹 하나씩** 1 반영 / 2 스킵 / 3 보류 → 반영한 건은 `resolution:`을 붙여 `processed/YYYY-MM/`으로 이동 → 바뀐 파일 목록 1줄. 커밋·push는 하지 않는다. 서브에이전트·헤드리스 위임도 없다.
 
@@ -140,8 +142,8 @@ context: done
 
 1. **Cursor는 포크가 아니라 원본 채팅에 append** — `cursor-agent`에 fork가 없어 `--resume`으로 요약 턴이 그 채팅에 추가된다 (덮어쓰기·깨짐 없음, 감수).
 2. **Cursor CLI는 block 메시지를 표시하지 않는다** — 프롬프트만 사라진다. 저장·포크는 정상.
-3. **bare `/ap` 불가** — Claude `/annoying-point:ap`, Codex·Cursor `$ap`.
-4. **`jq`·`perl` 필수** — jq가 없으면 훅이 아무것도 하지 않고 프롬프트가 AI에 통과한다 (Claude는 `commands/ap.md` 안내가 전달됨). perl이 없으면 nohup 폴백 — Cursor에서는 훅 종료 시 프로세스 그룹이 함께 죽어 포크가 실패한다.
+3. **bare `/add` 불가** — Claude `/annoying-point:add`, Codex·Cursor `$add`.
+4. **`jq`·`perl` 필수** — jq가 없으면 훅이 아무것도 하지 않고 프롬프트가 AI에 통과한다 (Claude는 `commands/add.md`, Codex·Cursor는 `add` 스킬 안내가 전달됨). perl이 없으면 nohup 폴백 — Cursor에서는 훅 종료 시 프로세스 그룹이 함께 죽어 포크가 실패한다.
 5. **context 생성 실패 시 원문만 리뷰** — `context: failed`, 원인은 `log/<id>.log`. 재시도 없음 (Cursor 빈 결과만 1회 재시도).
 6. **포크 워치독 300초** — 초과 시 자식 kill, `context: failed`, log `timeout 300s`. `AP_FORK_TIMEOUT` 환경변수로 조정.
 7. **Claude 포크는 `--settings '{"disableAllHooks":true}'`** — 전역 Stop 훅이 살아 있으면 `claude -p`가 종료하지 못하는 것 실측. 시스템 프롬프트는 바뀌지 않아 캐시는 유지된다.
@@ -149,9 +151,9 @@ context: done
 ## 개발
 
 ```bash
-bash scripts/test-capture.sh   # 91/91
+bash scripts/test-capture.sh   # 104/104
 bash scripts/test-fork.sh      # 64/64 (실세션 검증은 AP_FORK_SESSION 등 env 지정 시)
-bash scripts/test-install.sh   # 47/47
+bash scripts/test-install.sh   # 70/70
 bash scripts/test-notify.sh    # 16/16
 ```
 

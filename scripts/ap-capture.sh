@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# annoying-point 캡처 훅 — "/ap <한마디>" 를 가로채 $AP_HOME/inbox 에 md 로 저장하고 block 한다.
-# Claude 는 UserPromptSubmit(플레인 /ap·$ap) + UserPromptExpansion(플러그인 커맨드 /annoying-point:ap) 두 이벤트에 같은 스크립트를 건다.
+# annoying-point 캡처 훅 — "/add <한마디>" 를 가로채 $AP_HOME/inbox 에 md 로 저장하고 block 한다.
+# Claude 는 UserPromptSubmit(플레인 $add) + UserPromptExpansion(플러그인 커맨드 /annoying-point:add) 두 이벤트에 같은 스크립트를 건다.
 # Codex 는 UserPromptSubmit(Claude 와 같은 스키마), Cursor 는 beforeSubmitPrompt(입력 conversation_id·workspace_roots, 출력 continue/user_message).
 # 트랜스크립트는 읽지 않는다. 어떤 경우에도 exit 0 또는 block 으로 끝난다 (docs/TECH_SPEC.md §3·§4·§9).
 # 호출: bash ap-capture.sh --agent claude|codex|cursor   (기본 claude, stdin = 훅 입력 JSON)
@@ -9,7 +9,7 @@ set -uo pipefail
 
 AGENT="claude"
 [ "${1:-}" = "--agent" ] && AGENT="${2:-claude}"
-USAGE="📌 ap 사용법: /ap <한마디> · /ap +<좋은점>"
+USAGE='📌 ap 사용법: $add <한마디> · $add +<좋은점>'
 
 # AP_HOME 해석 (§4.3): env → ~/.config/ap/config 의 AP_HOME= 첫 줄(~ → $HOME) → ~/.local/share/ap
 ap_home() {
@@ -20,7 +20,7 @@ ap_home() {
 
 # 앞뒤 공백 제거 (bash 3.2 파라미터 확장만 사용)
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; printf '%s' "${s%"${s##*[![:space:]]}"}"; }
-# 첫 토큰(/ap·$ap·/annoying-point:ap) 을 뗀 나머지
+# 첫 토큰($add·/annoying-point:add) 을 뗀 나머지
 after_head() { printf '%s' "${1#"${1%%[[:space:]]*}"}"; }
 
 # $1=문구 — jq --arg 로 이스케이프해 block JSON 을 내고 종료. Cursor(beforeSubmitPrompt)만 출력 키가 다르다 (§3.1)
@@ -37,13 +37,13 @@ CMD="$(printf '%s' "$INPUT" | jq -r '.command_name // empty')"  # UserPromptExpa
 
 if [ -n "$CMD" ]; then
   # 플러그인 커맨드는 command_name 으로만 판정 — prompt 접두 매칭으로 타 커맨드를 삼키지 않는다 (wdis 선례)
-  case "${CMD#/}" in ap|annoying-point:ap) ;; *) exit 0 ;; esac
+  case "${CMD#/}" in add|annoying-point:add) ;; *) exit 0 ;; esac
   TEXT="$(printf '%s' "$INPUT" | jq -r '.command_args // empty')"
-  # command_args 없으면 prompt 에서 — prompt 는 "/ap x" 일 수도 인자만("x") 일 수도 있다
+  # command_args 없으면 prompt 에서 — prompt 는 "/add x" 일 수도 인자만("x") 일 수도 있다
   [ -n "$TEXT" ] || case "$PROMPT" in /*) TEXT="$(after_head "$PROMPT")" ;; *) TEXT="$PROMPT" ;; esac
 else
-  # 플레인 프롬프트: /ap·$ap·/annoying-point:ap 만 캡처. /ap-review 등은 통과 (bash 3.2 는 \s 미지원 → [[:space:]])
-  RE='^([/$]ap|/annoying-point:ap)([[:space:]]|$)'
+  # 플레인 프롬프트: /add·$add·/annoying-point:add 만 캡처. /add-review·$review 등은 통과 (bash 3.2 는 \s 미지원 → [[:space:]])
+  RE='^([/$]add|/annoying-point:add)([[:space:]]|$)'
   [[ $PROMPT =~ $RE ]] || exit 0
   TEXT="$(after_head "$PROMPT")"
 fi

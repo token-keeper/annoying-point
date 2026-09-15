@@ -1,15 +1,15 @@
 # annoying-point — PRD
 
-> 작성일 2026-09-14 (월) · 상태 설계 확정(구현 전) · 대상 제품 Claude Code · Codex CLI · Cursor Agent CLI 공용 플러그인 `annoying-point` (슬래시 커맨드 `/ap` · `/ap-review`)
+> 작성일 2026-09-14 (월) · 상태 설계 확정(구현 전) · 대상 제품 Claude Code · Codex CLI · Cursor Agent CLI 공용 플러그인 `annoying-point` (명령 `/add` · `/review` — v0.2.0에서 `ap`·`ap-review`에서 개명)
 
 ## 1. 개요
 
 ### 한 줄 정의
 
-AI로 개발하다가 짜증나는 점·좋은 점을 `/ap <한마디>`로 그 자리에서 남기면, 훅이 가로채 **메인 세션 컨텍스트를 건드리지 않고** 저장하고, 백그라운드에서 그 세션을 포크해 상황 요약을 붙인다. 나중에 `/ap-review`로 쌓인 것을 대화형으로 모아 보며 하네스(CLAUDE.md·룰·스킬·훅)를 고친다.
+AI로 개발하다가 짜증나는 점·좋은 점을 `/add <한마디>`로 그 자리에서 남기면, 훅이 가로채 **메인 세션 컨텍스트를 건드리지 않고** 저장하고, 백그라운드에서 그 세션을 포크해 상황 요약을 붙인다. 나중에 `/review`로 쌓인 것을 대화형으로 모아 보며 하네스(CLAUDE.md·룰·스킬·훅)를 고친다.
 
 - 플러그인·repo 이름: `annoying-point` (철자 주의: annoying). GitHub `https://github.com/token-keeper/annoying-point` (private으로 시작, 공개 예정). 로컬 `~/Github/ai-tools/annoying-point`.
-- 명령: `/ap` (캡처), `/ap-review` (리뷰). 좋은점은 `/ap +한마디` → `kind: good`.
+- 명령: `/add` (캡처), `/review` (리뷰). 좋은점은 `/add +한마디` → `kind: good`.
 - 대상 CLI 3종: Claude Code, Codex CLI(0.154.0), Cursor Agent CLI(2026.09.10). 셋 다 같은 동작.
 - 형제 플러그인(구조 참조): `~/Github/ai-tools/what-did-i-say`.
 
@@ -27,12 +27,12 @@ AI 코딩 도구를 하루 여러 시간 쓰면 "이건 룰을 무시했다", "�
 
 ### 목표
 
-- **G-1 캡처 비용 0** — `/ap`는 메인 AI에 전달되지 않는다(턴 0·추가 토큰 0). 입력 후 1초 안에 저장 확인 한 줄이 표시된다.
+- **G-1 캡처 비용 0** — `/add`는 메인 AI에 전달되지 않는다(턴 0·추가 토큰 0). 입력 후 1초 안에 저장 확인 한 줄이 표시된다.
 - **G-2 상황 자동 복원** — 백그라운드 포크가 5섹션 context(상황·경위·문제·추정 원인·근거)와 `target` 태그를 채운다. 리뷰어가 트랜스크립트를 열지 않아도 판단할 수 있어야 한다.
-- **G-3 3 CLI 동일 동작** — Claude Code·Codex·Cursor 어디서 `/ap`를 쳐도 같은 md 포맷으로 같은 저장소에 쌓인다.
-- **G-4 대화형 리뷰** — `/ap-review`가 현재 세션 AI 안에서 target별 그룹 → 진단 → diff 수준 수정안 → 그룹별 승인 → 반영 → `processed/` 이동까지 진행한다.
+- **G-3 3 CLI 동일 동작** — Claude Code·Codex·Cursor 어디서 `/add`를 쳐도 같은 md 포맷으로 같은 저장소에 쌓인다.
+- **G-4 대화형 리뷰** — `/review`가 현재 세션 AI 안에서 target별 그룹 → 진단 → diff 수준 수정안 → 그룹별 승인 → 반영 → `processed/` 이동까지 진행한다.
 - **G-5 저장소 하나** — 모든 구성요소는 `$AP_HOME` 하나만 본다. git·동기화는 모른다.
-- **G-6 좋은점도 같은 명령** — `/ap +한마디`로 유지할 패턴을 같은 흐름으로 남긴다.
+- **G-6 좋은점도 같은 명령** — `/add +한마디`로 유지할 패턴을 같은 흐름으로 남긴다.
 
 ### 비목표
 
@@ -52,21 +52,21 @@ Claude Code·Codex·Cursor를 하루 여러 시간 쓰며 자기 하네스(글�
 
 ### 유저 스토리
 
-- **US-1 캡처** As a 작업 중 짜증을 느낀 개발자, I want to `/ap 표 너무 김` 한 줄만 치고 바로 작업으로 돌아가기를, So that 메인 세션 턴·토큰을 쓰지 않고도 그 순간이 상황과 함께 남는다.
-- **US-2 좋은점** As a 마음에 드는 응답을 받은 개발자, I want to `/ap +브리핑 표 형식 좋음`으로 같은 명령에 `+`만 붙여 남기기를, So that 유지해야 할 패턴이 짜증과 같은 저장소에 쌓여 리뷰 때 "지키기" 항목으로 다뤄진다.
-- **US-3 리뷰** As a 하네스를 관리하는 개발자, I want to `/ap-review`로 쌓인 기록을 target별로 묶어 진단·수정안을 받고 그룹마다 1/2/3으로 승인하기를, So that 반복되는 짜증이 룰·스킬 수정으로 이어지고 처리된 건은 inbox에서 빠진다.
+- **US-1 캡처** As a 작업 중 짜증을 느낀 개발자, I want to `/add 표 너무 김` 한 줄만 치고 바로 작업으로 돌아가기를, So that 메인 세션 턴·토큰을 쓰지 않고도 그 순간이 상황과 함께 남는다.
+- **US-2 좋은점** As a 마음에 드는 응답을 받은 개발자, I want to `/add +브리핑 표 형식 좋음`으로 같은 명령에 `+`만 붙여 남기기를, So that 유지해야 할 패턴이 짜증과 같은 저장소에 쌓여 리뷰 때 "지키기" 항목으로 다뤄진다.
+- **US-3 리뷰** As a 하네스를 관리하는 개발자, I want to `/review`로 쌓인 기록을 target별로 묶어 진단·수정안을 받고 그룹마다 1/2/3으로 승인하기를, So that 반복되는 짜증이 룰·스킬 수정으로 이어지고 처리된 건은 inbox에서 빠진다.
 - **US-4 세션 시작 알림** As a 여러 세션을 오가는 개발자, I want to 세션이 시작될 때 `📌 ap inbox 7건 (최근 09-14)` 한 줄을 보기를, So that 리뷰할 게 쌓였는지 별도 확인 없이 알고 0건이면 아무것도 보지 않는다.
-- **US-5 3 CLI** As a CLI를 상황마다 바꿔 쓰는 개발자, I want to Codex·Cursor에서도 같은 `/ap`가 같은 저장소에 쌓이기를, So that 어느 도구에서 생긴 짜증이든 한 번의 리뷰로 모아 본다.
+- **US-5 3 CLI** As a CLI를 상황마다 바꿔 쓰는 개발자, I want to Codex·Cursor에서도 같은 `/add`가 같은 저장소에 쌓이기를, So that 어느 도구에서 생긴 짜증이든 한 번의 리뷰로 모아 본다.
 
 ## 4. 기능 요구사항
 
 ### F-1 캡처 훅
 
 - 이벤트: Claude·Codex `UserPromptSubmit`, Cursor `beforeSubmitPrompt`. 훅 스크립트는 bash + jq 1개(`scripts/ap-capture.sh`)를 3 CLI가 공용하고 Cursor만 출력 JSON 분기를 둔다.
-- 매칭: 프롬프트가 정규식 `^[/$]ap([[:space:]]|$)`에 맞을 때만 동작한다(Codex 스킬 호출 표기 `$ap` 포함). `/ap-review`는 매칭 제외 — 리뷰는 AI가 받아야 한다. 그 외 프롬프트는 출력 없이 exit 0으로 통과한다.
+- 매칭: 프롬프트가 정규식 `^[/$]add([[:space:]]|$)`에 맞을 때만 동작한다(Codex 스킬 호출 표기 `$add` 포함). `/review`는 매칭 제외 — 리뷰는 AI가 받아야 한다. 그 외 프롬프트는 출력 없이 exit 0으로 통과한다.
 - 동작 순서: ① `$AP_HOME/inbox/<id>.md` 즉시 생성(원문 + frontmatter, `context: pending`. `<id>` = `<YYYY-MM-DD>_<HHMMSS>_<agent>_<repo>_<4hex>` — F-3) ② 백그라운드 포크 요약기 기동(완전 분리, 훅은 기다리지 않음) ③ 프롬프트 block — 사용자에게 `📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` 한 줄 표시, 메인 AI 미전달.
 - `+` 접두: `kind: good`으로 저장하고 접두는 원문에서 제거한다.
-- 인자 없는 `/ap`: 저장하지 않고 사용법 한 줄을 block으로 표시한다.
+- 인자 없는 `/add`: 저장하지 않고 사용법 한 줄을 block으로 표시한다.
 
 ### F-2 백그라운드 포크 요약기
 
@@ -85,7 +85,7 @@ Claude Code·Codex·Cursor를 하루 여러 시간 쓰며 자기 하네스(글�
 - 모든 파일은 권한 600으로 생성한다(원문·요약에 비밀값이 섞일 수 있다).
 - 스킬·훅·리뷰 전부 `AP_HOME` 하나만 본다. git·동기화는 모른다(`mv`만). 사용자가 `AP_HOME`을 git repo 아래로 두면 동기화는 사용자 몫이다.
 
-### F-4 리뷰 스킬 `/ap-review`
+### F-4 리뷰 스킬 `/review`
 
 - 현재 세션 AI가 대화형으로 진행한다. 서브에이전트·헤드리스 위임 없음.
 - 절차: 읽기(`inbox/*.md` 전부, context 없는 건 원문만) → 묶기(`target`별, 1건도 그룹) → 진단(반복 vs 1회성, 원인 파일 특정) → 제안(그룹당 diff 수준 수정안 1개, `good`은 "유지 패턴"으로 CLAUDE.md·메모리 추가 제안) → 승인(그룹별 1 반영 / 2 스킵(이유 기록) / 3 보류, **한 번에 하나씩**) → 반영(파일 수정 → `processed/YYYY-MM/` 이동, frontmatter에 `resolution:` 추가) → 보고(바뀐 파일 목록 1줄).
@@ -115,7 +115,7 @@ Claude Code·Codex·Cursor를 하루 여러 시간 쓰며 자기 하네스(글�
 | 지표 | 목표값 | 측정 방법 |
 |---|---|---|
 | 캡처 지연 (엔터 → 저장 확인 표시) | **p95 1초 미만** | 훅 입력 JSON을 stdin으로 준 `ap-capture.sh` 단독 실행 30회의 p95 + 실세션 육안 1회 |
-| 메인 세션 추가 토큰 | **0** | 캡처 전후 메인 세션 transcript(jsonl)의 assistant 턴 수 변화 0 · `/ap` 원문이 AI 메시지에 등장 0회 |
+| 메인 세션 추가 토큰 | **0** | 캡처 전후 메인 세션 transcript(jsonl)의 assistant 턴 수 변화 0 · `/add` 원문이 AI 메시지에 등장 0회 |
 | 메인 세션 원문 오염 | **0건** | Cursor 사전관찰과 같은 방식 — 캡처 뒤 "내 메시지 몇 개?"에 캡처 전과 같은 수 응답 |
 | context 생성 성공률 | **10건 중 9건 이상**(`context: done`) | 실사용 첫 10건의 md에서 `context: done` 비율. 실패 건(`context: failed`)은 `log/`에 원인 존재 |
 | 포크 cache read 비율 | **90% 이상** | 포크 출력 usage의 `cache_read / (input + cache_read)`. Cursor 사전관찰 실측 18,528 / (152 + 18,528) = 99.2% |
@@ -128,9 +128,9 @@ Claude Code·Codex·Cursor를 하루 여러 시간 쓰며 자기 하네스(글�
 
 | # | 항목 | 확인 방법 |
 |---|---|---|
-| 1 | 플러그인 커맨드로 등록된 `/ap`가 Claude `UserPromptSubmit`에 **원문 그대로** 오는지 (whip 선례상 됨. `UserPromptExpansion` 이벤트와의 순서 확인) | `claude --plugin-dir` 세션에서 `/ap 테스트` → inbox md 생성 + block 표시 |
-| 2 | Codex·Cursor에서 미등록 `/ap` 입력이 훅까지 도달하는지 (CLI가 "unknown command"로 먼저 막는지) | 각 CLI에서 `/ap 테스트` 입력 → inbox md 생성 여부 |
-| 3 | Codex `UserPromptSubmit` block 라이브 동작 | Codex에서 `/ap 테스트` → AI 응답 없이 block 메시지만 표시 |
+| 1 | 플러그인 커맨드로 등록된 `/add`가 Claude `UserPromptSubmit`에 **원문 그대로** 오는지 (whip 선례상 됨. `UserPromptExpansion` 이벤트와의 순서 확인) | `claude --plugin-dir` 세션에서 `/add 테스트` → inbox md 생성 + block 표시 |
+| 2 | Codex·Cursor에서 미등록 `/add` 입력이 훅까지 도달하는지 (CLI가 "unknown command"로 먼저 막는지) | 각 CLI에서 `/add 테스트` 입력 → inbox md 생성 여부 |
+| 3 | Codex `UserPromptSubmit` block 라이브 동작 | Codex에서 `/add 테스트` → AI 응답 없이 block 메시지만 표시 |
 | 4 | Codex `codex exec fork` 출력 캡처 방법(`-o`/`--output-last-message`)과 sandbox 플래그 | `codex exec fork --help` 확인 + 1회 실행으로 stdout·파일 출력 비교 |
 | 5 | Cursor 훅 `conversation_id` == `--resume` id | 훅 입력의 `conversation_id`로 `cursor-agent -p --resume` 실행 → 원본 컨텍스트 계승 응답 확인 |
 | 6 | Claude `claude -p --resume`이 세션 cwd 밖에서도 세션을 찾는지 (안 되면 `cd "$cwd"` 필수) | 다른 디렉토리에서 `--resume <id>` 실행 → 성공/실패 기록 |

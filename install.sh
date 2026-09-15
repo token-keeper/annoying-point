@@ -2,7 +2,7 @@
 # annoying-point 설치 — Codex·Cursor 훅 등록(캡처·SessionStart 알림) + $AP_HOME 생성 (+ --skills 스킬 심링크). 재실행 멱등 (docs/TECH_SPEC.md §8).
 # Claude 는 플러그인 설치(hooks/hooks.json)로 자동 등록되므로 이 스크립트가 필요 없다.
 # 사용: bash install.sh [--skills] [--dry-run]
-#   --skills   ~/.agents/skills·~/.cursor/skills 에 ap-review 심링크 (기본 스킵 — 그 디렉토리가 다른 repo 로 가는 심링크인 환경이 있다)
+#   --skills   ~/.agents/skills·~/.cursor/skills 에 add·review 심링크 (기본 스킵 — 그 디렉토리가 다른 repo 로 가는 심링크인 환경이 있다)
 #   --dry-run  바뀔 JSON 만 stdout 에 출력, 파일·디렉토리는 손대지 않는다
 set -uo pipefail
 umask 077
@@ -61,15 +61,17 @@ if [ "${D#"$HOME"/}" = "$D" ]; then echo "경고: AP_HOME 이 홈 밖이라 훅�
 elif [ "$DRY" = 1 ]; then echo "[dry-run] AP_HOME: $D/{inbox,processed,log}"
 else mkdir -p "$D/inbox" "$D/processed" "$D/log" && echo "AP_HOME: $D"; fi
 
-# ⑤ 스킬 심링크 (옵션) — ~/.agents/skills(Codex) · ~/.cursor/skills(Cursor) → repo skills/ap-review
+# ⑤ 스킬 심링크 (옵션) — ~/.agents/skills(Codex) · ~/.cursor/skills(Cursor) → repo skills/add · skills/review
 if [ "$SKILLS" = 1 ]; then
-  if [ ! -d "$ROOT/skills/ap-review" ]; then echo "스킬 심링크: 스킵(커밋5) — $ROOT/skills/ap-review 없음"
-  else for d in "$HOME/.agents/skills" "$HOME/.cursor/skills"; do
+  for d in "$HOME/.agents/skills" "$HOME/.cursor/skills"; do
     [ -L "$d" ] && echo "주의: $d 는 심링크 → $(readlink "$d")"
-    if [ -d "$d/ap-review" ] && [ ! -L "$d/ap-review" ]; then echo "실제 디렉토리 존재 — 스킵: $d/ap-review"  # ln -sfn 이 그 안에 링크를 만들어 버린다
-    elif [ "$DRY" = 1 ]; then echo "[dry-run] $d/ap-review → $ROOT/skills/ap-review"
-    else mkdir -p "$d" && ln -sfn "$ROOT/skills/ap-review" "$d/ap-review" && echo "심링크: $d/ap-review"; fi
-  done; fi
+    for sk in add review; do
+      if [ ! -d "$ROOT/skills/$sk" ]; then echo "스킬 심링크: 스킵 — $ROOT/skills/$sk 없음"
+      elif [ -d "$d/$sk" ] && [ ! -L "$d/$sk" ]; then echo "실제 디렉토리 존재 — 스킵: $d/$sk"  # ln -sfn 이 그 안에 링크를 만들어 버린다
+      elif [ "$DRY" = 1 ]; then echo "[dry-run] $d/$sk → $ROOT/skills/$sk"
+      else mkdir -p "$d" && ln -sfn "$ROOT/skills/$sk" "$d/$sk" && echo "심링크: $d/$sk"; fi
+    done
+  done
 else echo "스킬 심링크: 스킵 (--skills 로 실행)"; fi
 echo "Codex: 다음 세션 시작 때 훅 승인(trust) 프롬프트에 Yes"  # 첫 실행 시 [hooks.state] 에 trusted_hash 가 기록되기 전이라 뜬다(실측)
 exit "$ERR"
