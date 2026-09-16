@@ -1,6 +1,6 @@
 # annoying-point
 
-> v0.2.0에서 명령 이름을 `ap`→`add`, `ap-review`→`review`로 바꿨다 — `$ap`·`/annoying-point:ap`는 더 이상 캡처되지 않는다 (호환 없음).
+> v0.2.0에서 명령 이름을 `ap`→`add`, `ap-review`→`review`로 바꿨다 — `$ap`·`/annoying-point:ap`는 더 이상 캡처되지 않는다 (호환 없음). Claude는 `/add`·`/annoying-point:add`·`$add` 셋 다 캡처되고, 리뷰는 `/annoying-point:review`로 호출한다 (bare `/review`는 Claude 번들 code-review와 겹친다).
 
 AI로 개발하다 짜증나는 점·좋은 점을 `$add <한마디>` 한 줄로 그 자리에서 남기고, 나중에 `review`로 모아 하네스(CLAUDE.md·룰·스킬·훅)를 고치는 플러그인. Claude Code · Codex CLI · Cursor Agent CLI 공용.
 
@@ -36,7 +36,7 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$add <한마디>` 한 줄로
 
 | CLI | 방법 |
 |---|---|
-| Claude Code | 마켓플레이스 `token-keeper/plugins` 등록 예정. 등록 전에는 `claude --plugin-dir /절대/경로/annoying-point` (세션 한정 로드, 전역 설정 무변경). 훅·커맨드·스킬이 플러그인으로 자동 등록되므로 `install.sh` 불필요 |
+| Claude Code | 마켓플레이스 `token-keeper/plugins` 등록 예정. 등록 전에는 `claude --plugin-dir /절대/경로/annoying-point` (세션 한정 로드, 전역 설정 무변경). 훅·스킬이 플러그인으로 자동 등록되므로 `install.sh` 불필요 |
 | Codex CLI · Cursor | repo에서 `bash install.sh` |
 
 `install.sh`가 하는 일 (재실행 멱등):
@@ -46,7 +46,7 @@ AI로 개발하다 짜증나는 점·좋은 점을 `$add <한마디>` 한 줄로
 3. `~/.cursor/hooks.json`에 `beforeSubmitPrompt`(캡처) · `sessionStart`(알림) 병합
 4. 기존 항목 보존 — 같은 command가 이미 있으면 건너뛰고, 올바르지 않은 JSON은 손대지 않는다. 파일을 바꾸기 전 `<파일>.bak-<타임스탬프>`로 백업
 5. `$AP_HOME/{inbox,processed,log}` 생성 (권한 700)
-6. `--skills`를 주면 `~/.agents/skills/{add,review}` · `~/.cursor/skills/{add,review}` 심링크 생성 (기본은 스킵 — 그 디렉토리가 다른 repo로 가는 심링크인 환경 보호)
+6. `--skills`를 주면 `~/.agents/skills/{add,review}` · `~/.cursor/skills/{add,review}` 심링크 생성 (기본은 스킵 — 그 디렉토리가 다른 repo로 가는 심링크인 환경 보호). 같은 이름이 실제 디렉토리이거나 **다른 대상을 가리키는 심링크면 덮어쓰지 않고 스킵**한다. v0.1 이름 `ap-review` 링크는 이 repo의 `skills/ap-review`를 가리키던 것만 제거한다
 
 ```bash
 bash install.sh --dry-run     # 바뀔 JSON만 출력, 파일은 손대지 않는다
@@ -60,19 +60,19 @@ bash install.sh --skills      # + add·review 스킬 심링크 (Codex·Cursor에
 
 | CLI | 입력 |
 |---|---|
-| Claude Code | `/annoying-point:add <한마디>` 또는 플레인 텍스트 `$add <한마디>` |
+| Claude Code | `/add <한마디>` · `/annoying-point:add <한마디>` · 플레인 텍스트 `$add <한마디>` 셋 다 |
 | Codex CLI | `$add <한마디>` |
 | Cursor | `$add <한마디>` |
 
 - 좋은점은 `+` 접두: `$add +브리핑 표 형식 좋음` → `kind: good`으로 저장 (접두는 원문에서 제거).
 - 인자 없는 `$add`는 저장하지 않고 사용법 한 줄만 표시한다.
-- bare `/add`는 세 CLI 모두 미등록 슬래시 커맨드라 훅에 도달하지 않는다 (실측). Claude는 네임스페이스 `/annoying-point:add`, 나머지는 `$add`. Codex·Cursor의 `add` 스킬은 자동완성용이며 실제 처리는 훅이 가로챈다.
+- Claude는 `/add`·`/annoying-point:add`·`$add` 셋 다 된다 (2.1.272 실측: `/add x`는 `/annoying-point:add x`로 해석돼 `UserPromptExpansion`에서 캡처). 다른 플러그인이 `add`를 정의하면 `/annoying-point:add`로. Codex·Cursor는 bare `/add`를 CLI가 미등록 커맨드로 거부하므로 `$add`. `add` 스킬은 자동완성·훅 미동작 안내용이며 실제 처리는 훅이 가로챈다.
 
 화면 표시 (실측):
 
 | CLI | 표시 |
 |---|---|
-| Claude Code | `/annoying-point:add` → `UserPromptExpansion operation blocked by hook: 📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` · `$add` → `UserPromptSubmit operation blocked by hook: 📌 …` |
+| Claude Code | `/add`·`/annoying-point:add` → `UserPromptExpansion operation blocked by hook: 📌 ap 저장됨 #<id> (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부` · `$add` → `UserPromptSubmit operation blocked by hook: 📌 …` |
 | Codex CLI | `Blocked by hook` |
 | Cursor | 프롬프트만 사라지고 메시지는 표시되지 않는다 (저장·포크는 정상) |
 
@@ -84,7 +84,7 @@ bash install.sh --skills      # + add·review 스킬 심링크 (Codex·Cursor에
 
 | CLI | 입력 |
 |---|---|
-| Claude Code | `/annoying-point:review` |
+| Claude Code | `/annoying-point:review` (bare `/review`는 Claude 번들 code-review 별칭과 겹쳐 쓰지 않는다) |
 | Codex CLI | `$review` |
 | Cursor | 스킬 로딩(`install.sh --skills` 또는 프로젝트 `.cursor/skills/review` 심링크) 후 "review 스킬로 리뷰해줘" 같은 명시 요청 — 실측: 슬래시 목록에는 안 뜨고 자연어 요청으로 `Used review` 로딩됨 |
 
@@ -142,19 +142,20 @@ context: done
 
 1. **Cursor는 포크가 아니라 원본 채팅에 append** — `cursor-agent`에 fork가 없어 `--resume`으로 요약 턴이 그 채팅에 추가된다 (덮어쓰기·깨짐 없음, 감수).
 2. **Cursor CLI는 block 메시지를 표시하지 않는다** — 프롬프트만 사라진다. 저장·포크는 정상.
-3. **bare `/add` 불가** — Claude `/annoying-point:add`, Codex·Cursor `$add`.
-4. **`jq`·`perl` 필수** — jq가 없으면 훅이 아무것도 하지 않고 프롬프트가 AI에 통과한다 (Claude는 `commands/add.md`, Codex·Cursor는 `add` 스킬 안내가 전달됨). perl이 없으면 nohup 폴백 — Cursor에서는 훅 종료 시 프로세스 그룹이 함께 죽어 포크가 실패한다.
+3. **Claude 리뷰는 `/annoying-point:review`로만** — bare `/review`는 Claude 번들 code-review 별칭과 겹친다. 캡처는 Claude `/add`·`/annoying-point:add`·`$add`, Codex·Cursor는 `$add`(bare `/add`는 CLI가 거부).
+4. **`jq`·`perl` 필수** — jq가 없으면 훅이 아무것도 하지 않고 프롬프트가 AI에 통과한다 (세 CLI 모두 `skills/add/SKILL.md` 안내가 전달됨). perl이 없으면 nohup 폴백 — Cursor에서는 훅 종료 시 프로세스 그룹이 함께 죽어 포크가 실패한다.
 5. **context 생성 실패 시 원문만 리뷰** — `context: failed`, 원인은 `log/<id>.log`. 재시도 없음 (Cursor 빈 결과만 1회 재시도).
 6. **포크 워치독 300초** — 초과 시 자식 kill, `context: failed`, log `timeout 300s`. `AP_FORK_TIMEOUT` 환경변수로 조정.
 7. **Claude 포크는 `--settings '{"disableAllHooks":true}'`** — 전역 Stop 훅이 살아 있으면 `claude -p`가 종료하지 못하는 것 실측. 시스템 프롬프트는 바뀌지 않아 캐시는 유지된다.
+8. **`install.sh --skills`는 남의 심링크를 덮어쓰지 않는다** — `~/.agents/skills/add` 등이 다른 대상을 가리키면 스킵 메시지만 내고 그대로 둔다. 직접 정리한 뒤 재실행.
 
 ## 개발
 
 ```bash
-bash scripts/test-capture.sh   # 104/104
-bash scripts/test-fork.sh      # 64/64 (실세션 검증은 AP_FORK_SESSION 등 env 지정 시)
-bash scripts/test-install.sh   # 70/70
-bash scripts/test-notify.sh    # 16/16
+bash scripts/test-capture.sh   # 108/108
+bash scripts/test-fork.sh      # 74/74 (실세션 검증은 AP_FORK_SESSION 등 env 지정 시)
+bash scripts/test-install.sh   # 81/81
+bash scripts/test-notify.sh    # 18/18
 ```
 
 외부 프레임워크 없음. 테스트는 `$HOME` 아래 임시 디렉토리에 `AP_HOME`·`HOME`을 두고 실행하므로 실제 저장소·`~/.codex`·`~/.cursor`는 건드리지 않는다.

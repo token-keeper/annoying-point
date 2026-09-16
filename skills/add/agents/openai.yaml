@@ -1,0 +1,5 @@
+interface:
+  display_name: "annoying-point add"
+  short_description: "짜증·좋은점 한 줄 캡처 ($add) — 훅이 처리"
+policy:
+  allow_implicit_invocation: false

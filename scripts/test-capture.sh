@@ -33,6 +33,7 @@ assert "1 decision=block" [ "$(printf '%s' "$OUT" | jq -r .decision)" = block ]
 assert_has "1 reason 에 저장" "$(reason "$OUT")" "저장"
 assert_has "1 reason 에 #id" "$(reason "$OUT")" "#$(basename "$MD" .md)"
 assert_has "1 reason 에 요약 첨부 안내" "$(reason "$OUT")" "상황 요약 자동 첨부"
+assert "1 reason 전체 문자열 일치" [ "$(reason "$OUT")" = "📌 ap 저장됨 #$(basename "$MD" .md) (정상 — 훅이 가로챔, 답변 없음) · 30초 뒤 상황 요약 자동 첨부" ]
 assert "1 inbox md 1개" [ "$(nfiles "$H")" = 1 ]
 assert "1 frontmatter 키 10개 순서" [ "$(sed -n '2,11p' "$MD" | cut -d: -f1 | tr '\n' ' ')" = "ts agent kind repo branch cwd session transcript target context " ]
 assert "1 ---·---·원문 위치" [ "$(sed -n '1p;12p;13p' "$MD" | tr '\n' '|')" = "---|---|표 너무 김|" ]
@@ -70,6 +71,11 @@ H="$TMP/c2c"; run "$H" "$(j $'/add 첫줄\n둘째줄')"; MD="$(md1 "$H")"
 assert "2 줄바꿈 → 공백" [ "$(sed -n 13p "$MD")" = "첫줄 둘째줄" ]
 
 echo "== 검증 2b: 플러그인 커맨드(UserPromptExpansion)·네임스페이스"
+# hooks.json 의 UserPromptExpansion matcher 가 command_name "annoying-point:add" 만 잡는지 — 정규식은 grep -E 로 평가
+MATCHER="$(jq -r '.hooks.UserPromptExpansion[0].matcher' "$ROOT_DIR/hooks/hooks.json")"
+assert "2b hooks.json matcher 값" [ "$MATCHER" = '^annoying-point:add$' ]
+assert "2b matcher ↔ command_name annoying-point:add 매치" [ "$(printf 'annoying-point:add\n' | grep -Ec "$MATCHER")" = 1 ]
+assert "2b matcher ↔ ap 비매치" [ "$(printf 'ap\nannoying-point:ap\n' | grep -Ec "$MATCHER")" = 0 ]
 H="$TMP/c2d"; run "$H" "$(jc 'annoying-point:add' '표 김' '/annoying-point:add 표 김')"; MD="$(md1 "$H")"
 assert "2b command_name=annoying-point:add 캡처" [ "$(nfiles "$H")" = 1 ]
 assert "2b command_args 본문" [ "$(sed -n 13p "$MD")" = "표 김" ]

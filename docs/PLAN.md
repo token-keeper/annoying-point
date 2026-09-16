@@ -17,7 +17,7 @@
 | `install.sh` | Codex·Cursor 훅 등록 + 스킬 심링크 + AP_HOME 생성 | 3 |
 | `scripts/ap-notify.sh` | SessionStart 1줄 알림 | 4 |
 | `skills/review/SKILL.md` | 대화형 리뷰 스킬 | 5 |
-| `commands/add.md` | `/annoying-point:add` 자동완성 등록 + 훅 미동작 안내 | 6 |
+| `skills/add/SKILL.md` | Claude `/add`·`/annoying-point:add` · Codex·Cursor `$add` 자동완성 등록 + 훅 미동작 안내 (v0.2.1: `commands/add.md` 통합·삭제) | 6 |
 | `.claude-plugin/plugin.json` | 매니페스트 | 6 |
 | `README.md` | 설치·사용법·한계 | 6 |
 
@@ -91,14 +91,14 @@
 
 ### 커밋 6 — `docs: commands/add.md · plugin.json · README`
 
-- 산출: `commands/add.md`(자동완성 등록 + "훅이 처리해야 함, 여기 도달했으면 install.sh 또는 jq 안내" 본문), `.claude-plugin/plugin.json`(name `annoying-point`, version 0.1.0, 메타데이터만), `README.md`(설치 3 CLI · 사용법 · `AP_HOME` 설정 · 출력 예시 · 알려진 한계)
+- 산출: `commands/add.md`(자동완성 등록 + "훅이 처리해야 함, 여기 도달했으면 install.sh 또는 jq 안내" 본문 — v0.2.1에서 `skills/add/SKILL.md`로 통합·삭제), `.claude-plugin/plugin.json`(name `annoying-point`, version 0.1.0, 메타데이터만), `README.md`(설치 3 CLI · 사용법 · `AP_HOME` 설정 · 출력 예시 · 알려진 한계)
 - 알려진 한계에 명시: Cursor는 포크가 아니라 원본 채팅 append / jq 필수 / context 미생성 시 원문만 리뷰 / Cursor SessionStart 알림 여부(커밋 4 결과)
 - 의존: 커밋 1~5
 - 예상 줄수: add.md 15 + plugin.json 15 + README 80 ≈ **110줄** (문서)
 - 검증:
   1. `claude plugin validate /Users/mini/Github/ai-tools/annoying-point --strict` 통과
   2. `claude --plugin-dir` 세션 `/help`에 `add`·`review` 노출
-  3. **검증 항목 1 재확인** — `commands/add.md`가 있는 상태에서도 `/add 테스트`가 훅에 원문 그대로 도달(커밋 1 검증 5와 동일 절차)
+  3. **검증 항목 1 재확인** — `commands/add.md`(현 `skills/add/SKILL.md`)가 있는 상태에서도 `/add 테스트`가 훅에 원문 그대로 도달(커밋 1 검증 5와 동일 절차)
   4. README 절차만 보고 임시 `HOME`에서 3 CLI 설치·`/add` 1회씩 재현
 
 ### 커밋 7 — `docs(verify): 검증 항목 7개 라이브 확인 결과 기록`
@@ -153,7 +153,7 @@
 
 | 리스크 | 대응 |
 |---|---|
-| `/add`가 훅에 원문으로 안 오고 커맨드 전개 결과가 옴 (검증 항목 1) | `commands/add.md` 제거하고 자동완성 포기, 또는 `UserPromptExpansion` 이벤트로 전환. 커밋 1 라이브 검증에서 즉시 판정 |
+| `/add`가 훅에 원문으로 안 오고 커맨드 전개 결과가 옴 (검증 항목 1) | `commands/add.md`(현 `skills/add/SKILL.md`) 제거하고 자동완성 포기, 또는 `UserPromptExpansion` 이벤트로 전환. 커밋 1 라이브 검증에서 즉시 판정 |
 | Codex·Cursor가 미등록 `/add`를 CLI 단에서 거부 (검증 항목 2) | `$add` 표기 또는 스킬로 등록해 훅까지 도달시킴. 커밋 3에서 판정 |
 | 포크가 훅 timeout 안에 안 끝남 | 설계상 훅은 기동만 하고 반환 — fd 리다이렉트 누락이 유일한 실패 원인. 커밋 2 검증 5(`ps`)로 확인 |
 | 포크가 uncached로 돌아 비용 급증 | 캐시 조건 3개(config dir·모델·TTL) 준수. 커밋 2 검증 3에서 비율 실측, 90% 미만이면 원인 확인 후 대표 보고 |
