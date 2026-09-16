@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # annoying-point 캡처 훅 — "/add <한마디>" 를 가로채 $AP_HOME/inbox 에 md 로 저장하고 block 한다.
-# Claude 는 UserPromptSubmit(플레인 $add) + UserPromptExpansion(플러그인 커맨드 /annoying-point:add) 두 이벤트에 같은 스크립트를 건다.
+# Claude 는 UserPromptSubmit(플레인 $add) + UserPromptExpansion(플러그인 커맨드 /annoying-point:add — bare /add 도 여기로 해석돼 온다, 2.1.272 실측) 두 이벤트에 같은 스크립트를 건다.
 # Codex 는 UserPromptSubmit(Claude 와 같은 스키마), Cursor 는 beforeSubmitPrompt(입력 conversation_id·workspace_roots, 출력 continue/user_message).
 # 트랜스크립트는 읽지 않는다. 어떤 경우에도 exit 0 또는 block 으로 끝난다 (docs/TECH_SPEC.md §3·§4·§9).
 # 호출: bash ap-capture.sh --agent claude|codex|cursor   (기본 claude, stdin = 훅 입력 JSON)

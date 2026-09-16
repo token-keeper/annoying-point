@@ -1,0 +1,5 @@
+interface:
+  display_name: "annoying-point review"
+  short_description: "쌓인 짜증·좋은점 inbox 대화형 리뷰"
+policy:
+  allow_implicit_invocation: false

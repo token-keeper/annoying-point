@@ -262,15 +262,17 @@ AP_HOME 해석: env AP_HOME → ~/.config/ap/config 의 AP_HOME= 줄 → ~/.loca
 ## 7. 보고 — 바뀐 파일 목록 1줄. 커밋·push 하지 않는다.
 ```
 
+각 스킬 디렉토리의 `agents/openai.yaml`(`interface.display_name`·`short_description`, `policy.allow_implicit_invocation: false`)은 Codex가 스킬을 암묵 호출하지 않게 막는다. `install.sh --skills`는 디렉토리째 링크하므로 함께 배포된다.
+
 ## 8. 배포 구조·등록
 
 ```
 annoying-point/
 ├── .claude-plugin/plugin.json      # name annoying-point, 메타데이터만
 ├── hooks/hooks.json                # UserPromptSubmit(가로채기) · SessionStart(알림)
-├── commands/add.md                 # /annoying-point:add 등록용(자동완성). 본문은 "훅이 처리, 여기 오면 안 됨" 안내
-├── skills/add/SKILL.md             # Codex·Cursor $add 자동완성용. 본문은 commands/add.md 와 같은 안내
+├── skills/add/SKILL.md             # Claude /add·/annoying-point:add · Codex·Cursor $add 자동완성 등록용. 본문은 "훅이 처리, 여기 오면 안 됨" 안내 (v0.2.1: commands/add.md 를 여기로 통합)
 ├── skills/review/SKILL.md          # 대화형 리뷰 스킬 (Claude·Codex·Cursor 공용 SKILL.md 표준)
+├── skills/{add,review}/agents/openai.yaml  # Codex 스킬 메타(display_name·short_description) + allow_implicit_invocation: false — 암묵 호출 차단
 ├── scripts/
 │   ├── ap-capture.sh               # 훅 본체 (bash+jq). --agent 분기
 │   ├── ap-fork.sh                  # 백그라운드 요약기 런처 (agent별 분기)
@@ -292,7 +294,7 @@ annoying-point/
 }
 ```
 
-`commands/add.md` — 자동완성 등록용. 훅이 정상이면 이 파일은 로드되지 않는다. 로드됐다면 훅 미등록·jq 없음이므로 본문은 AI에게 "원문을 그대로 다시 보여주고 `install.sh` 실행 또는 `brew install jq`를 안내하라. 다른 작업 금지"만 지시한다.
+`skills/add/SKILL.md` — 자동완성 등록용(Claude `/add`·`/annoying-point:add`, Codex·Cursor `$add`). 훅이 정상이면 이 파일은 로드되지 않는다. 로드됐다면 훅 미등록·jq 없음이므로 본문은 AI에게 "원문을 그대로 다시 보여주고 `install.sh` 실행 또는 `brew install jq`를 안내하라. 다른 작업 금지"만 지시한다.
 
 `install.sh`가 하는 일 (Codex·Cursor, 1회, 재실행 멱등):
 
@@ -311,7 +313,7 @@ annoying-point/
 
 | 상황 | 처리 |
 |---|---|
-| jq 없음 | 출력 없이 exit 0 → 프롬프트가 AI에 통과. Claude는 `commands/add.md`, Codex·Cursor는 `add` 스킬 안내가 AI에 전달돼 사용자가 알게 됨. Codex·Cursor는 1턴 소비. install.sh와 README가 jq를 선행 조건으로 안내 |
+| jq 없음 | 출력 없이 exit 0 → 프롬프트가 AI에 통과. 세 CLI 모두 `skills/add/SKILL.md` 안내가 AI에 전달돼 사용자가 알게 됨. Codex·Cursor는 1턴 소비. install.sh와 README가 jq를 선행 조건으로 안내 |
 | stdin JSON 파싱 실패 | 출력 없이 exit 0 |
 | `AP_HOME` 쓰기 불가 (mkdir·파일 생성 실패, `$HOME` 밖) | block: `📌 ap 저장 실패 (<경로> 쓰기 불가) — 원문: <text>`. 원문을 다시 보여줘 유실 방지. 포크 기동 안 함 |
 | `transcript_path` null (Codex) | frontmatter `transcript: -`로 저장. 포크는 `session_id`로 정상 시도(포크는 transcript를 쓰지 않음) |
@@ -343,7 +345,7 @@ annoying-point/
 
 | # | 항목 | 결과 | 확인 방법·근거 |
 |---|---|---|---|
-| 1 | 플러그인 커맨드 `/ap`가 훅에 원문으로 오는지 | **대응 적용 후 통과** — bare `/ap`는 "Unknown command"로 훅 미도달. 네임스페이스 `/annoying-point:ap`는 `UserPromptExpansion`으로 가로채야 함(`UserPromptSubmit`은 못 잡음). 플레인 `$ap`는 `UserPromptSubmit`에서 잡힘 | `claude --plugin-dir` 세션: `/ap 테스트` → Unknown · `/annoying-point:ap 표 너무 김` → `UserPromptExpansion operation blocked by hook` + md 생성 + 트랜스크립트 user 0·assistant 0 · `$ap …` → `UserPromptSubmit operation blocked by hook`. 대응: hooks.json에 두 이벤트 등록, `command_name` 라우팅(커밋 1) |
+| 1 | 플러그인 커맨드 `/ap`가 훅에 원문으로 오는지 | **대응 적용 후 통과** — bare `/ap`는 "Unknown command"로 훅 미도달. 네임스페이스 `/annoying-point:ap`는 `UserPromptExpansion`으로 가로채야 함(`UserPromptSubmit`은 못 잡음). 플레인 `$ap`는 `UserPromptSubmit`에서 잡힘. **v0.2.1 추가 실측(2.1.272)**: bare `/add x`는 `/annoying-point:add x`로 해석돼 `UserPromptExpansion`에서 캡처됨 — Claude는 `/add`·`/annoying-point:add`·`$add` 셋 다 됨 | `claude --plugin-dir` 세션: `/ap 테스트` → Unknown · `/annoying-point:ap 표 너무 김` → `UserPromptExpansion operation blocked by hook` + md 생성 + 트랜스크립트 user 0·assistant 0 · `$ap …` → `UserPromptSubmit operation blocked by hook`. 대응: hooks.json에 두 이벤트 등록, `command_name` 라우팅(커밋 1) |
 | 2 | Codex·Cursor 미등록 `/ap` 도달 여부 | **불가 → `$ap` 사용** — Codex "Unrecognized command '/ap'", Cursor도 슬래시 미등록 | Codex `CODEX_HOME` 복사본 세션 · Cursor 프로젝트 `.cursor/hooks.json` 세션에서 `$ap …` 캡처 확인 |
 | 3 | Codex `UserPromptSubmit` block | **통과** — `Blocked by hook / 📌 ap #… 저장` 표시, AI 턴 없음 | 위 Codex 세션 |
 | 4 | `codex exec fork` 출력 캡처·sandbox | **확정** — `-o/--output-last-message <FILE>`(마지막 메시지 텍스트), `--ephemeral`(rollout 미생성 확인), `-c sandbox_mode="read-only"`(fork에 `-s` 없음) | `codex exec fork --help` · 실세션 포크 27초 done |

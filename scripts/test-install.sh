@@ -113,6 +113,22 @@ assert "1g cursor 심링크 review" [ "$(readlink "$H/.cursor/skills/review")" =
 assert_has "1g 심링크 디렉토리 주의 출력" "$OUT" "주의: $H/.agents/skills 는 심링크 → $H/.real-skills"
 OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
 assert "1g 재실행 후에도 링크 2개" [ "$(ls "$H/.real-skills" | wc -l | tr -d ' ')" = 2 ]
+assert "1g 재실행 후 readlink add 동일" [ "$(readlink "$H/.agents/skills/add")" = "$R/skills/add" ]
+assert "1g 재실행 후 readlink review 동일" [ "$(readlink "$H/.agents/skills/review")" = "$R/skills/review" ]
+# 다른 대상 심링크는 덮어쓰지 않고, 구 ap-review 링크는 우리가 만든 것(대상이 정확히 $R/skills/ap-review)만 지운다
+H="$TMP/h6d"; mkdir -p "$H/my-own" "$H/.real-skills" "$H/.agents" "$H/.cursor/skills"; ln -s "$H/.real-skills" "$H/.agents/skills"
+ln -s "$H/my-own" "$H/.real-skills/review"; ln -s "$R/skills/ap-review" "$H/.real-skills/ap-review"; ln -s "$H/my-own" "$H/.cursor/skills/ap-review"
+OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills --dry-run 2>&1)"
+assert_has "1g dry-run 다른 대상 심링크 스킵 메시지" "$OUT" "다른 대상 심링크 존재 — 스킵: $H/.agents/skills/review → $H/my-own"
+assert_has "1g dry-run 구 링크 제거 메시지" "$OUT" "[dry-run] 구 링크 제거: $H/.agents/skills/ap-review"
+assert "1g dry-run 구 링크 미제거" [ -L "$H/.real-skills/ap-review" ]
+OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
+assert_has "1g 다른 대상 심링크 → 스킵 메시지" "$OUT" "다른 대상 심링크 존재 — 스킵: $H/.agents/skills/review → $H/my-own"
+assert "1g 다른 대상 심링크 readlink 그대로" [ "$(readlink "$H/.real-skills/review")" = "$H/my-own" ]
+assert "1g 같은 디렉토리의 add 는 정상 링크" [ "$(readlink "$H/.real-skills/add")" = "$R/skills/add" ]
+assert_has "1g 자기 대상 구 ap-review 링크 제거 메시지" "$OUT" "구 링크 제거: $H/.agents/skills/ap-review"
+assert "1g 자기 대상 구 ap-review 링크 제거됨" [ ! -L "$H/.real-skills/ap-review" ]
+assert "1g 다른 대상 ap-review 링크는 남음" [ "$(readlink "$H/.cursor/skills/ap-review")" = "$H/my-own" ]
 H="$TMP/h6b"; mkdir -p "$H/.agents/skills/review"; OUT="$(HOME="$H" /bin/bash "$R/install.sh" --skills 2>&1)"
 assert_has "1g 실제 디렉토리 존재 → 스킵" "$OUT" "실제 디렉토리 존재 — 스킵: $H/.agents/skills/review"
 assert "1g 실제 디렉토리 안에 링크 안 만듦" [ ! -e "$H/.agents/skills/review/review" ]
