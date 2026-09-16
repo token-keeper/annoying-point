@@ -68,9 +68,15 @@ if [ "$SKILLS" = 1 ]; then
     for sk in add review; do
       if [ ! -d "$ROOT/skills/$sk" ]; then echo "스킬 심링크: 스킵 — $ROOT/skills/$sk 없음"
       elif [ -d "$d/$sk" ] && [ ! -L "$d/$sk" ]; then echo "실제 디렉토리 존재 — 스킵: $d/$sk"  # ln -sfn 이 그 안에 링크를 만들어 버린다
+      elif [ -L "$d/$sk" ] && [ "$(readlink "$d/$sk")" != "$ROOT/skills/$sk" ]; then echo "다른 대상 심링크 존재 — 스킵: $d/$sk → $(readlink "$d/$sk")"  # 남의 링크는 덮어쓰지 않는다
       elif [ "$DRY" = 1 ]; then echo "[dry-run] $d/$sk → $ROOT/skills/$sk"
       else mkdir -p "$d" && ln -sfn "$ROOT/skills/$sk" "$d/$sk" && echo "심링크: $d/$sk"; fi
     done
+    # v0.1 이름(ap-review) 링크 — 우리가 만든 것(정확히 $ROOT/skills/ap-review 를 가리킴)만 제거. 다른 대상이면 손대지 않는다
+    if [ -L "$d/ap-review" ] && [ "$(readlink "$d/ap-review")" = "$ROOT/skills/ap-review" ]; then
+      if [ "$DRY" = 1 ]; then echo "[dry-run] 구 링크 제거: $d/ap-review"
+      else rm "$d/ap-review" && echo "구 링크 제거: $d/ap-review"; fi
+    fi
   done
 else echo "스킬 심링크: 스킵 (--skills 로 실행)"; fi
 echo "Codex: 다음 세션 시작 때 훅 승인(trust) 프롬프트에 Yes"  # 첫 실행 시 [hooks.state] 에 trusted_hash 가 기록되기 전이라 뜬다(실측)
